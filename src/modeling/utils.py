@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+import numpy as np
 import pandas as pd
 import requests
 from pyspark.sql import SparkSession, Window
@@ -28,7 +29,9 @@ def fetch_calls_weekly(start: str, end: str) -> pd.DataFrame:
     )
     where = f"created_date >= '{start}' and created_date <= '{end}'"
     group = "community_board, yr, mo, woy"
-    r = requests.get(config.CALLS_URL, params={"$select": select, "$where": where, "$group": group}, timeout=300)
+    r = requests.get(config.CALLS_URL,
+                     params={"$select": select, "$where": where, "$group": group, "$limit": "50000"},
+                     timeout=300)
     r.raise_for_status()
 
     df = pd.DataFrame(r.json()).dropna(subset=["community_board"])
@@ -140,3 +143,29 @@ def chronological_split(df: pd.DataFrame, train_frac: float = 0.8):
     split_idx = int(len(weeks) * train_frac)
     train_weeks, test_weeks = weeks[:split_idx], weeks[split_idx:]
     return df[df["week_start"].isin(train_weeks)], df[df["week_start"].isin(test_weeks)]
+
+
+def ranking_metrics(df: pd.DataFrame, score_col: str, k: int = 5) -> dict:
+    def week_metrics(g):
+        actual_sorted = g.sort_values(config.TARGET, ascending=False)
+        pred_sorted = g.sort_values(score_col, ascending=False)
+        pred_top = list(pred_sorted["board_key"].head(k))
+        actual_top = set(actual_sorted["board_key"].head(k))
+
+        rel = dict(zip(g["board_key"], g[config.TARGET]))
+        dcg = sum(rel[b] / np.log2(i + 2) for i, b in enumerate(pred_top))
+        idcg = sum(v / np.log2(i + 2) for i, v in enumerate(actual_sorted[config.TARGET].head(k)))
+        ndcg = dcg / idcg if idcg > 0 else 0.0
+
+        precision = len(set(pred_top) & actual_top) / k
+        top1 = actual_sorted["board_key"].iloc[0]
+        rr = 1 / (pred_top.index(top1) + 1) if top1 in pred_top else 0.0
+        return pd.Series({"precision": precision, "ndcg": ndcg, "mrr": rr, "n_boards": len(g)})
+
+    weekly = df.groupby("week_start").apply(week_metrics, include_groups=False)
+    weekly = weekly[weekly["n_boards"] >= k]
+    return {
+        f"precision_at_{k}": weekly["precision"].mean(),
+        f"ndcg_at_{k}": weekly["ndcg"].mean(),
+        f"mrr_at_{k}": weekly["mrr"].mean(),
+    }

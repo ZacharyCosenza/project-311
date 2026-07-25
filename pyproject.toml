@@ -17,6 +17,7 @@ dependencies = [
     "pyspark==4.2.0",
     "matplotlib==3.11.0",
     "shap==0.52.0",
+    "geopandas==1.1.4",
 ]
 
 [project.optional-dependencies]

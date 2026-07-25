@@ -1,10 +1,3 @@
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-RAW_DIR = ROOT / "data" / "00_raw"
-PROCESSED_DIR = ROOT / "data" / "01_processed"
-REPORT_DIR = ROOT / "data" / "02_reporting"
-
 START_DATE = "2021-01-01"
 END_DATE = "2026-07-25"
 
@@ -18,6 +11,9 @@ EVENT_INCLUDE_TYPES = [
 ]
 WEATHER_LAT, WEATHER_LON = 40.7812, -73.9665
 WEATHER_DAILY_VARS = "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum"
+
+DISTRICTS_URL = "https://data.cityofnewyork.us/resource/5crt-au7u.geojson"
+BORO_NAMES = {"1": "MANHATTAN", "2": "BRONX", "3": "BROOKLYN", "4": "QUEENS", "5": "STATEN ISLAND"}
 
 FEATURES = [
     "week_of_year", "lag_1", "lag_2", "event_count",
