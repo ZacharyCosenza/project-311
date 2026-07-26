@@ -122,9 +122,7 @@ def main():
     spark = SparkSession.builder.appName("modeling-train").master("local[*]").getOrCreate()
     data = utils.build_features(spark, calls, events, lag1_weather, pred_weather)
     spark.stop()
-    data[config.FEATURES] = data[config.FEATURES].astype(float)
-    data["lag_1_raw"] = data["lag_1"]
-    data[["lag_1", "lag_2", "event_count"]] = np.log1p(data[["lag_1", "lag_2", "event_count"]])
+    data = utils.prepare_features(data)
     data.to_parquet(PROCESSED_DIR / "features.parquet")
 
     chrono_train, chrono_test = utils.chronological_split(data)

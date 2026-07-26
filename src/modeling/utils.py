@@ -138,6 +138,14 @@ def build_features(spark: SparkSession, calls: pd.DataFrame, events: pd.DataFram
     return sdf.orderBy("board_key", "week_start").toPandas()
 
 
+def prepare_features(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.copy()
+    data[config.FEATURES] = data[config.FEATURES].astype(float)
+    data["lag_1_raw"] = data["lag_1"]
+    data[["lag_1", "lag_2", "event_count"]] = np.log1p(data[["lag_1", "lag_2", "event_count"]])
+    return data
+
+
 def chronological_split(df: pd.DataFrame, train_frac: float = 0.8):
     weeks = sorted(df["week_start"].unique())
     split_idx = int(len(weeks) * train_frac)

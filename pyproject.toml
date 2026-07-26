@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 notebooks = ["jupyter", "plotly", "requests-cache", "umap-learn"]
+test = ["pytest", "pytest-timeout"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
