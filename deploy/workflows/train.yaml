@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: train
+  namespace: argo
+spec:
+  schedules:
+    - "0 * * * *"          # every hour — change to "0 6 * * 1" (Monday 06:00 UTC) for production
+  timezone: "America/New_York"
+  concurrencyPolicy: Forbid # skip if a run is already in progress
+  workflowSpec:
+    entrypoint: train
+    volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: modeling-data
+    templates:
+      - name: train
+        container:
+          image: ghcr.io/zacharycosenza/modeling:latest
+          command: ["python", "-m", "modeling.main", "train"]
+          env:
+            - name: ENV
+              value: "prod"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data

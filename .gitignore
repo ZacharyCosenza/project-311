@@ -4,4 +4,6 @@ __pycache__/
 data/
 mlruns/
 .env
+.secrets/
 *.egg-info
+/images
