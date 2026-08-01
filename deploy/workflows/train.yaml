@@ -13,8 +13,8 @@ spec:
     entrypoint: train
     volumes:
       - name: data
-        persistentVolumeClaim:
-          claimName: modeling-data
+        hostPath:
+          path: /app/data
     templates:
       - name: train
         container:
