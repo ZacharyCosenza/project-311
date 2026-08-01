@@ -9,6 +9,7 @@ spec:
   timezone: "America/New_York"
   concurrencyPolicy: Forbid # skip if a run is already in progress
   workflowSpec:
+    serviceAccountName: argo
     entrypoint: train
     volumes:
       - name: data
