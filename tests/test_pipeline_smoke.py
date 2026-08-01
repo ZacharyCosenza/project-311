@@ -1,3 +1,4 @@
+import os
 from datetime import date, timedelta
 
 import numpy as np
@@ -7,6 +8,7 @@ from pyspark.sql import SparkSession
 from modeling import pipeline_features, pipeline_modeling, pipeline_raw, pipeline_target
 
 
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="requires external API access")
 @pytest.mark.timeout(300)
 def test_pipeline_smoke():
     end = date.today().isoformat()
