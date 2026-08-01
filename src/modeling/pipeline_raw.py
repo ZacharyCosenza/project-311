@@ -21,7 +21,7 @@ WEATHER_DAILY_VARS = "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_su
 WEATHER_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 WEATHER_FORECAST_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 
-ENV = os.environ.get("MODELING_ENV", "dev")
+ENV = os.environ.get("ENV", "dev")
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "data" / ENV / "00_raw"

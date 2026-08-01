@@ -25,7 +25,7 @@ RANKING_K = 5
 MODEL_PARAMS = dict(n_estimators=200, max_depth=4, learning_rate=0.05, random_state=42, enable_categorical=True)
 CATEGORICAL_MASK = [f in pipeline_features.CATEGORICAL_FEATURES for f in FEATURES]
 
-ENV = os.environ.get("MODELING_ENV", "dev")
+ENV = os.environ.get("ENV", "dev")
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = ROOT / "data" / ENV / "01_processed"

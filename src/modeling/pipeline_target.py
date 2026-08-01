@@ -7,7 +7,7 @@ from modeling import pipeline_raw
 
 TARGET_COL = "tgt_calls"
 
-ENV = os.environ.get("MODELING_ENV", "dev")
+ENV = os.environ.get("ENV", "dev")
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = ROOT / "data" / ENV / "01_processed"

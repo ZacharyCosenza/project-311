@@ -16,7 +16,7 @@ FEATURES = [
 CATEGORICAL_FEATURES = ["ft_board_key"]
 NUMERIC_FEATURES = [f for f in FEATURES if f not in CATEGORICAL_FEATURES]
 
-ENV = os.environ.get("MODELING_ENV", "dev")
+ENV = os.environ.get("ENV", "dev")
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "data" / ENV / "00_raw"
