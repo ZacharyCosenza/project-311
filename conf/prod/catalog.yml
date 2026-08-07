@@ -1,0 +1,54 @@
+# Prod overrides — same structure as base but under data/prod/
+calls_weekly:
+  type: pandas.ParquetDataset
+  filepath: data/prod/00_raw/calls_weekly.parquet
+
+events_weekly:
+  type: pandas.ParquetDataset
+  filepath: data/prod/00_raw/events_weekly.parquet
+
+weather_lag1:
+  type: pandas.ParquetDataset
+  filepath: data/prod/00_raw/weather_lag1.parquet
+
+weather_pred:
+  type: pandas.ParquetDataset
+  filepath: data/prod/00_raw/weather_pred.parquet
+
+target:
+  type: pandas.ParquetDataset
+  filepath: data/prod/01_processed/target.parquet
+
+lag_features:
+  type: pandas.ParquetDataset
+  filepath: data/prod/01_processed/lag_features.parquet
+
+event_features:
+  type: pandas.ParquetDataset
+  filepath: data/prod/01_processed/event_features.parquet
+
+weather_features:
+  type: pandas.ParquetDataset
+  filepath: data/prod/01_processed/weather_features.parquet
+
+features:
+  type: pandas.ParquetDataset
+  filepath: data/prod/01_processed/features.parquet
+
+model:
+  type: pickle.PickleDataset
+  filepath: data/prod/02_reporting/model.pkl
+
+modeling_data:
+  type: pandas.ParquetDataset
+  filepath: data/prod/02_reporting/modeling_data.parquet
+
+metrics:
+  type: pandas.CSVDataset
+  filepath: data/prod/02_reporting/metrics.csv
+
+feature_histograms:
+  type: matplotlib.MatplotlibWriter
+  filepath: data/prod/02_reporting/feature_histograms.png
+  save_args:
+    format: png

@@ -1,0 +1,59 @@
+start_date: "2021-01-01"
+end_date: "2026-07-25"
+
+calls_url: "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
+events_url: "https://data.cityofnewyork.us/resource/bkfu-528j.json"
+event_include_types:
+  - "Parade"
+  - "Street Festival"
+  - "Single Block Festival"
+  - "Block Party"
+  - "Farmers Market"
+  - "Street Event"
+  - "Religious Event"
+  - "Plaza Event"
+  - "Plaza Partner Event"
+  - "Athletic Race / Tour"
+  - "Open Street Partner Event"
+  - "Health Fair"
+  - "Sidewalk Sale"
+
+weather_lat: 40.7812
+weather_lon: -73.9665
+weather_daily_vars: "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum"
+weather_archive_url: "https://archive-api.open-meteo.com/v1/archive"
+weather_forecast_url: "https://historical-forecast-api.open-meteo.com/v1/forecast"
+
+model_params:
+  n_estimators: 200
+  max_depth: 4
+  learning_rate: 0.05
+  random_state: 42
+  enable_categorical: true
+
+test_size: 0.2
+val_size: 0.2
+random_state: 42
+ranking_k: 5
+
+target_col: "tgt_calls"
+split_col: "split"
+stratify_col: "week_start"
+
+feature_cols:
+  - "ft_week_of_year"
+  - "ft_lag_1"
+  - "ft_lag_2"
+  - "ft_event_count"
+  - "ft_lag1_temp_max"
+  - "ft_lag1_temp_min"
+  - "ft_lag1_had_rain"
+  - "ft_lag1_had_snow"
+  - "ft_pred_temp_max"
+  - "ft_pred_temp_min"
+  - "ft_pred_had_rain"
+  - "ft_pred_had_snow"
+  - "ft_board_key"
+
+categorical_features:
+  - "ft_board_key"

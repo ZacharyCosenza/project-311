@@ -16,6 +16,8 @@ dependencies = [
     "mlflow==3.14.0",
     "pyspark==4.2.0",
     "matplotlib==3.11.0",
+    "kedro>=1.5.0",
+    "kedro-datasets[pandas,pickle,matplotlib]>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -24,3 +26,12 @@ test = ["pytest", "pytest-timeout"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.kedro]
+package_name = "modeling"
+project_name = "project-311"
+kedro_init_version = "1.5.0"
+source_dir = "src"
+
+[tool.kedro_telemetry]
+project_id = "9c4f5991015947ac9faa6b6568de4564"

@@ -8,6 +8,7 @@ ENV PATH="$JAVA_HOME/bin:$PATH"
 WORKDIR /app
 COPY pyproject.toml .
 COPY src/ src/
+COPY conf/ conf/
 RUN pip install --no-cache-dir -e .
 
-ENTRYPOINT ["python", "-m", "modeling.main"]
+CMD ["kedro", "run"]

@@ -19,9 +19,9 @@ spec:
       - name: train
         container:
           image: ghcr.io/zacharycosenza/modeling:latest
-          command: ["python", "-m", "modeling.main", "train"]
+          command: ["kedro", "run"]
           env:
-            - name: ENV
+            - name: KEDRO_ENV
               value: "prod"
           volumeMounts:
             - name: data

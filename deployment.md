@@ -1,292 +1,303 @@
-# Deployment walkthrough: weekly retrain + daily tweet
+# Deployment: weekly retrain + daily tweet
 
-Scope for this pass: get the model retraining weekly and a tweet posting daily,
-running on Kubernetes via Argo Workflows, deployed with zero manual `kubectl apply`
-via Argo CD. The dashboard is explicitly out of scope here — it's a natural
-follow-on addition to the same `/deploy` folder once this is working.
+## Concepts
 
-## 0. Assumptions
+A map of all the tools and how they connect — read this once before touching any commands.
 
-- You have `kubectl` pointed at a real Kubernetes cluster (cloud-managed or
-  self-hosted; the commands below are cloud-agnostic).
-- Images are pushed to GHCR (`ghcr.io`), since it's free and tied to your
-  existing GitHub account — no separate registry signup.
-- Model artifacts hand off between the weekly train job and daily tweet job via
-  an in-cluster **MinIO** bucket (S3-compatible), so you don't need an external
-  cloud storage account to get started. Swap for real S3/GCS later if you want —
-  the client code doesn't change, just the endpoint/credentials.
-- Twitter posting logic doesn't exist in this repo yet — this guide flags where
-  it needs to go, with a skeleton, but you'll need your own approved Twitter
-  Developer app and API v2 keys (from developer.twitter.com) before step 7 works
-  end to end.
+### Docker: images and containers
 
-## 1. Architecture at a glance
+A **Docker image** is a frozen snapshot of an environment: your code, Python version,
+dependencies, all baked in. Think of it as a recipe or a class definition.
+
+A **container** is a running instance of that image — a live process in an isolated box.
+Like an object instantiated from a class. You can run many containers from the same image.
+
+```
+Image (ghcr.io/zacharycosenza/modeling:latest)
+  └─ Container A  (running train job)
+  └─ Container B  (another run, same image)
+```
+
+Images are built by `docker build`, stored in a **registry** (GHCR in our case),
+and pulled to wherever they run (your laptop, a cloud server, a Kubernetes pod).
+
+### Kubernetes: clusters, nodes, namespaces, pods
+
+**Kubernetes (k8s)** is a system for running and scheduling containers at scale.
+Instead of running `docker run` yourself, you declare what you want and Kubernetes
+makes it happen.
+
+- **Cluster** — a group of machines (real or virtual) that Kubernetes manages together.
+  We use **k3d** to create a lightweight cluster (`prod-311`) that runs inside Docker
+  on your desktop. One Docker container = one fake "machine" in the cluster.
+
+- **Node** — one machine in the cluster. k3d clusters have one or more nodes,
+  each a Docker container.
+
+- **Namespace** — a logical partition inside a cluster. Like folders in a filesystem.
+  We use `argo` for workflows and `argocd` for Argo CD. Keeps unrelated things from
+  colliding.
+
+- **Pod** — the smallest unit Kubernetes runs. One pod = one (or a few) containers
+  that share a network and storage. When Argo runs your training job, it creates a pod,
+  waits for it to finish, then deletes it.
+
+- **kubectl** — the CLI to talk to Kubernetes. It always targets whichever cluster is
+  set as your current **context** (`kubectl config get-contexts`). This is important
+  if you have multiple clusters — commands go to the active context only.
+
+```
+Cluster (prod-311, running in Docker via k3d)
+  └─ Namespace: argo
+      └─ Pod: train-abc123  (your modeling container, created on schedule)
+  └─ Namespace: argocd
+      └─ Pod: argocd-server-...  (the Argo CD UI/controller)
+```
+
+### Argo Workflows: CronWorkflow, Workflow, templates
+
+**Argo Workflows** is a Kubernetes-native job scheduler. You define jobs as YAML
+and Argo creates pods to run them on schedule.
+
+- **CronWorkflow** — a scheduled job definition, like a cron job but managed by
+  Kubernetes. Argo v4 uses `spec.schedules` (an array), not `spec.schedule`.
+
+- **Workflow** — one actual run of a CronWorkflow. Each run gets its own name
+  (`train-abc123`), its own pod, and its own logs.
+
+- **Template** — the unit of work inside a workflow. For us it's a single container
+  step that runs `python -m modeling.main train`.
+
+- **serviceAccountName** — which Kubernetes identity the pod runs as. Pods need
+  permission to talk to the Kubernetes API (to report their status back to Argo).
+  We use the `argo` service account, which has those permissions via `deploy/rbac.yaml`.
+
+```
+CronWorkflow "train"  (definition, always exists)
+  └─ Workflow "train-abc123"  (one run, created hourly)
+      └─ Pod "train-abc123"   (the actual container)
+```
+
+### Argo CD: GitOps
+
+**Argo CD** watches a git repo and keeps the cluster in sync with it. Instead of
+running `kubectl apply` manually after every change, you `git push` and Argo CD
+applies the diff automatically.
+
+- **Application** — an Argo CD resource that says "watch this repo path and sync
+  it to this cluster namespace." We have one: `deploy/application.yaml`.
+- **selfHeal: true** — if someone manually edits the cluster with `kubectl`, Argo CD
+  reverts it. Git is the single source of truth.
+- **Bootstrap** — Argo CD itself must be applied once by hand (`kubectl apply -f
+  deploy/application.yaml`). After that, all future changes go through git.
+
+### CI/CD: GitHub Actions
+
+**CI** (Continuous Integration) and **CD** (Continuous Deployment) are automated
+pipelines that run when you push code.
+
+- **CI** (`ci.yml`) — runs tests. Catches broken code before it ships.
+  Runs on every push and every pull request.
+
+- **CD** (`cd.yml`) — builds the Docker image and pushes it to GHCR.
+  Only runs after CI passes on `main`. Triggered via `workflow_run`.
+
+- **GHCR** (GitHub Container Registry) — GitHub's free image registry.
+  Images are stored at `ghcr.io/<owner>/<name>:<tag>`.
+  By default packages are private — you must make them public for the cluster to pull.
+
+```
+git push
+  -> CI runs tests
+      -> (if pass) CD builds image, pushes ghcr.io/zacharycosenza/modeling:latest
+          -> k3d cluster pulls :latest on next CronWorkflow run
+```
+
+### How it all connects in this project
+
+```
+Your code (src/)
+  -> Dockerfile bakes it into an image
+      -> GitHub Actions (CD) pushes image to GHCR
+          -> k3d cluster (prod-311) pulls the image
+              -> Argo Workflows runs it as a pod on schedule
+                  -> Pod writes artifacts to /app/data (= your local data/ folder)
+```
+
+Argo CD (not yet bootstrapped) would sit between GitHub and kubectl — watching
+`deploy/` in git and auto-applying any YAML changes to the cluster.
+
+---
+
+## Architecture
 
 ```
 push to main
-   -> GitHub Actions: run tests, build image, push to ghcr.io/<you>/modeling:<sha>
-   -> (Argo CD Image Updater notices the new tag, bumps it in /deploy)
-   -> Argo CD notices the git diff, syncs the cluster
-   -> CronWorkflow "weekly-train" (Mondays): runs `modeling.main train`,
-      writes model.pkl to MinIO
-   -> CronWorkflow "daily-tweet" (daily): loads latest model.pkl from MinIO,
-      runs inference on the current week, posts a tweet
+  -> GitHub Actions CI: run tests (skips integration tests in CI)
+  -> GitHub Actions CD: build image, push to ghcr.io/zacharycosenza/modeling:latest + :<sha>
+  -> CronWorkflow "train" (weekly): runs modeling.main train, writes artifacts to local data/prod/
+  -> CronWorkflow "tweet" (daily, not yet implemented): reads model, posts tweet
 ```
 
-The only manual step, ever, is `git push`. Everything after that is automatic.
+Local Kubernetes cluster (`prod-311`) runs on k3d (k3s in Docker). Artifacts are written
+directly to your local `data/` folder via a hostPath volume mount — no object storage needed.
 
-## 2. Prerequisites to install once
-
-- [Argo CLI](https://github.com/argoproj/argo-workflows/releases) (optional,
-  useful for manually triggering/watching workflow runs while testing)
-- A GHCR personal access token with `write:packages` scope, OR just use the
-  built-in `GITHUB_TOKEN` in Actions (simpler, no extra token to manage)
-- A Twitter Developer account with API v2 read/write access on the app you'll
-  post from
-
-## 3. Containerize the app
-
-Add `Dockerfile` at the repo root:
-
-```dockerfile
-FROM eclipse-temurin:17-jre-jammy AS java
-FROM python:3.12-slim
-
-COPY --from=java /opt/java/openjdk /opt/java/openjdk
-ENV JAVA_HOME=/opt/java/openjdk
-ENV PATH="$JAVA_HOME/bin:$PATH"
-
-WORKDIR /app
-COPY pyproject.toml .
-COPY src/ src/
-RUN pip install --no-cache-dir -e .
-
-ENTRYPOINT ["python", "-m", "modeling.main"]
-```
-
-(PySpark needs a JVM at runtime — that's what the multi-stage copy of the JRE
-is for, same reason the CI workflow installs Java for the test job.)
-
-## 4. CI: build and push the image on merge
-
-Extend `.github/workflows/ci.yml` with a second job that only runs after tests
-pass, and only on pushes to `main` (not PRs):
-
-```yaml
-  build-and-push:
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/modeling:${{ github.sha }}
-```
-
-## 5. Install Argo Workflows and Argo CD on the cluster
+## Cluster setup (one-time, if cluster is deleted)
 
 ```bash
+# Create cluster with local data/ folder mounted inside
+k3d cluster create prod-311 --volume /home/cosenzac/code/project-311/data:/app/data@all
+
+# Install Argo Workflows (v4.0.8 — note: uses spec.schedules array, not spec.schedule)
 kubectl create namespace argo
-kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/latest/download/install.yaml
+kubectl apply -f https://github.com/argoproj/argo-workflows/releases/download/v4.0.8/install.yaml \
+  --server-side --force-conflicts
 
+# Install Argo CD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml \
+  --server-side --force-conflicts
+
+# Apply all deploy/ manifests
+kubectl apply -f deploy/rbac.yaml
+kubectl apply -f deploy/workflows/train.yaml
 ```
 
-Both are one-time installs — you don't redo this per deploy.
+## CI/CD
 
-## 6. Model artifact storage (MinIO)
+Split into two workflows:
 
-Simplest path: install via Helm into its own namespace.
+- `.github/workflows/ci.yml` — runs tests on every push and PR
+- `.github/workflows/cd.yml` — builds and pushes Docker image to GHCR after CI passes on main
 
-```bash
-helm repo add minio https://charts.min.io/
-kubectl create namespace storage
-helm install minio minio/minio -n storage \
-  --set rootUser=admin,rootPassword=<choose-a-password>,mode=standalone
-```
+**Gotchas:**
+- GHCR image names must be all-lowercase. `github.repository_owner` preserves original casing.
+  Fix: `echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]'` into `$GITHUB_ENV`.
+- CD pushes both `:latest` and `:<sha>` tags. The CronWorkflow uses `:latest`.
+- Integration tests hit real external APIs — skip them in CI with:
+  `@pytest.mark.skipif(os.environ.get("CI") == "true", reason="requires external API access")`
 
-Then create a bucket (port-forward the MinIO console or use `mc`):
-
-```bash
-kubectl port-forward -n storage svc/minio 9000:9000
-mc alias set local http://localhost:9000 admin <choose-a-password>
-mc mb local/modeling-artifacts
-```
-
-`main.py`'s train mode currently writes `model.pkl` to local disk
-(`data/02_reporting/`) — it'll need a small change to also push that file to
-`s3://modeling-artifacts/model.pkl` (via `boto3`, pointed at the MinIO
-endpoint) so the daily-tweet job can fetch the latest one. Flagging this as a
-follow-up code change, not something this doc does for you.
-
-## 7. Secrets, the GitOps-safe way
-
-Committing a plain `Secret` YAML to git leaks the credential into git history
-forever. Use **Sealed Secrets** instead — it encrypts client-side, so the
-committed blob is only decryptable by the cluster's controller.
-
-```bash
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/latest/download/controller.yaml
-# install the matching `kubeseal` CLI locally, then:
-kubectl create secret generic twitter-api-keys \
-  --from-literal=api-key=<...> --from-literal=api-secret=<...> \
-  --from-literal=access-token=<...> --from-literal=access-secret=<...> \
-  --dry-run=client -o yaml | kubeseal -o yaml > deploy/secrets/twitter-sealed.yaml
-```
-
-Repeat the same pattern for MinIO access credentials. The resulting
-`*-sealed.yaml` files are safe to commit — that's the whole point.
-
-## 8. Repo layout for GitOps
+## Deploy manifests
 
 ```
 deploy/
-  application.yaml          # the Argo CD Application itself
+  rbac.yaml              # Role + RoleBinding for argo service account
+  application.yaml       # Argo CD Application (bootstrap once, then git push is enough)
   workflows/
-    weekly-train.yaml
-    daily-tweet.yaml
-  secrets/
-    twitter-sealed.yaml
-    minio-sealed.yaml
+    train.yaml           # CronWorkflow: weekly retrain
 ```
 
-## 9. The two CronWorkflows
+## RBAC
 
-`deploy/workflows/weekly-train.yaml`:
+Argo Workflows pods need permission to write `workflowtaskresults`. The built-in
+`argo-cluster-role` does NOT include `create` on that resource — you must add it.
+`deploy/rbac.yaml` adds a custom Role + RoleBinding for the `argo` service account.
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: CronWorkflow
-metadata:
-  name: weekly-train
-  namespace: argo
-spec:
-  schedule: "0 6 * * 1"       # Monday 06:00 UTC
-  timezone: "America/New_York"
-  concurrencyPolicy: Forbid
-  workflowSpec:
-    entrypoint: train
-    templates:
-      - name: train
-        container:
-          image: ghcr.io/<you>/modeling:latest   # bumped automatically, see step 10
-          command: ["python", "-m", "modeling.main", "train"]
-          envFrom:
-            - secretRef: {name: minio-credentials}
-```
+The CronWorkflow must also set `serviceAccountName: argo` (not the default SA).
 
-`deploy/workflows/daily-tweet.yaml`:
+## Argo CD bootstrap (not yet done)
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: CronWorkflow
-metadata:
-  name: daily-tweet
-  namespace: argo
-spec:
-  schedule: "0 14 * * *"      # 14:00 UTC daily
-  concurrencyPolicy: Forbid
-  workflowSpec:
-    entrypoint: tweet
-    templates:
-      - name: tweet
-        container:
-          image: ghcr.io/<you>/modeling:latest
-          command: ["python", "-m", "modeling.post_tweet"]   # doesn't exist yet, see below
-          envFrom:
-            - secretRef: {name: minio-credentials}
-            - secretRef: {name: twitter-api-keys}
-```
-
-`modeling.post_tweet` doesn't exist in the codebase yet. It needs to: pull the
-latest `model.pkl` from MinIO, pull/build this week's feature row(s), call
-`pipeline_modeling.inference`, format the result into tweet text, and post via
-the Twitter API (`tweepy` is the usual client). The actual tweet *content*
-(which board, what phrasing) is a product decision worth designing separately
-— happy to build this out once you're ready, it's a small, self-contained
-script.
-
-## 10. Wire up the image tag automatically
-
-Rather than hand-editing the `image:` tag in both CronWorkflow YAMLs on every
-release, install **Argo CD Image Updater** — it watches the GHCR repository
-and rewrites the tag in git itself when a new image lands, so CI never needs
-write access back into `/deploy`. Annotate both workflow manifests:
-
-```yaml
-metadata:
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: modeling=ghcr.io/<you>/modeling
-    argocd-image-updater.argoproj.io/modeling.update-strategy: latest
-```
-
-## 11. The Argo CD Application (the one bootstrap step)
-
-`deploy/application.yaml`:
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: modeling
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/<you>/project-311.git
-    targetRevision: main
-    path: deploy
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argo
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-```
-
-Apply this **once**, by hand — it's the single bootstrap step that turns on
-GitOps for everything else:
+Run once to turn on GitOps — after this, `git push` is the only deploy step:
 
 ```bash
 kubectl apply -f deploy/application.yaml
 ```
 
-From this point on, every future change is `git push` only. Argo CD will
-even revert manual `kubectl` edits made directly against the cluster, since
-`selfHeal: true` means git is the only source of truth.
+## Useful commands
 
-## 12. Verify it works
+### Cluster
 
 ```bash
-argocd app get modeling                 # confirm it's synced
-argo submit --from cronworkflow/weekly-train -n argo --watch   # trigger a real run now, don't wait for Monday
+k3d cluster list                         # list clusters
+k3d cluster delete prod-311              # delete cluster
+kubectl config get-contexts              # list kubectl contexts
+kubectl config use-context k3d-prod-311  # switch to prod-311
 ```
 
-## What's deferred
+### Workflows
 
-- The dashboard — a `Deployment` + `Service` (+ `Ingress` if it should be
-  public) dropped into `deploy/` alongside the two CronWorkflows, once you
-  want it.
-- Swapping in-cluster MinIO for real S3/GCS, if you outgrow it.
-- Swapping Sealed Secrets for External Secrets Operator, if you move to a
-  real secrets manager (Vault, AWS/GCP Secrets Manager) later.
+```bash
+# Trigger a run manually
+argo submit --from cronworkflow/train -n argo
 
-## Open items before this is fully live
+# Watch a running workflow
+argo get <workflow-name> -n argo
 
-1. Write `modeling/post_tweet.py` (needs the tweet-format decision).
-2. Push/pull `model.pkl` to/from MinIO from `main.py` (currently local-disk only).
-3. Get Twitter Developer API v2 credentials.
-4. Confirm cluster specifics (provider, `kubectl` context) if not already set up.
+# Stream logs
+argo logs <workflow-name> -n argo
+
+# List all workflow runs
+kubectl get workflows -n argo
+
+# List CronWorkflows
+kubectl get cronworkflows -n argo
+
+# Delete a workflow run
+argo delete <workflow-name> -n argo
+
+# Delete all completed/failed runs
+argo delete --completed -n argo
+```
+
+### Pods
+
+```bash
+kubectl get pods -n argo                 # list pods
+kubectl describe pod <pod> -n argo       # full pod details
+kubectl logs <pod> -n argo -c main       # container logs
+kubectl delete pod <pod> -n argo         # delete a pod
+```
+
+### Inspect PVC contents (if not using hostPath)
+
+```bash
+kubectl run inspect --image=busybox --restart=Never -n argo \
+  --overrides='{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"modeling-data"}}],"containers":[{"name":"inspect","image":"busybox","command":["ls","-la","/data/prod/02_reporting"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}]}}'
+kubectl wait pod/inspect -n argo --for=condition=Ready --timeout=30s || true
+kubectl logs inspect -n argo
+kubectl delete pod inspect -n argo
+```
+
+### Argo CD
+
+```bash
+kubectl get applications -n argocd       # list apps
+kubectl describe application modeling -n argocd
+```
+
+## Current state
+
+- [x] CI runs tests, CD builds and pushes image to GHCR
+- [x] CronWorkflow `train` runs hourly (change to `0 6 * * 1` for production)
+- [x] Artifacts written to local `data/prod/02_reporting/` via hostPath volume
+- [ ] Argo CD not yet bootstrapped (`kubectl apply -f deploy/application.yaml`)
+- [ ] Tweet workflow not yet implemented (`modeling/post_tweet.py`)
+- [ ] Twitter credentials not yet sealed
+
+## Pending: tweet workflow
+
+`modeling/post_tweet.py` needs to: read `model.pkl` from `data/prod/02_reporting/`,
+run inference on the current week's features, format as tweet text, post via tweepy.
+
+Twitter credentials go in `.secrets/twitter.env` (gitignored), sealed for cluster use:
+
+```bash
+kubectl create secret generic twitter-api-keys \
+  --from-literal=api-key=<...> \
+  --from-literal=api-secret=<...> \
+  --from-literal=access-token=<...> \
+  --from-literal=access-secret=<...> \
+  --dry-run=client -o yaml | kubeseal -o yaml > deploy/secrets/twitter-sealed.yaml
+```
+
+## Known gotchas
+
+| Problem | Fix |
+|---|---|
+| `spec.schedule unknown field` | Argo v4 uses `spec.schedules` (array) |
+| `repository name must be lowercase` | Pipe `github.repository_owner` through `tr '[:upper:]' '[:lower:]'` |
+| `workflowtaskresults is forbidden` | `argo-cluster-role` missing `create` — apply `deploy/rbac.yaml` |
+| `cannot change roleRef` | RoleBindings are immutable — delete and recreate |
+| `--server-side` flag | Large CRDs exceed client-side annotation limit (262144 bytes) — always use `--server-side --force-conflicts` for Argo installs |
+| GHCR 403 on image pull | Package is private by default — make it public on github.com/ZacharyCosenza?tab=packages |

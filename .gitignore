@@ -1,4 +1,5 @@
 .venv/
+conf/local/
 __pycache__/
 *.pyc
 data/
