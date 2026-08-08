@@ -16,9 +16,14 @@ def compute_predict_window(lookback_weeks: int) -> tuple[str, str]:
     return start_date, end_date
 
 
-def load_champion_model(mlflow_tracking_uri: str, mlflow_model_name: str) -> XGBRegressor:
+def load_latest_model(mlflow_tracking_uri: str, mlflow_model_name: str) -> XGBRegressor:
+    # Loads the highest registered version, no manual promotion required.
+    # Swap back to `models:/{mlflow_model_name}@champion` once manual gating is wanted again.
     mlflow.set_tracking_uri(mlflow_tracking_uri)
-    return mlflow.xgboost.load_model(f"models:/{mlflow_model_name}@champion")
+    client = mlflow.MlflowClient()
+    versions = client.search_model_versions(f"name='{mlflow_model_name}'")
+    latest_version = max(int(v.version) for v in versions)
+    return mlflow.xgboost.load_model(f"models:/{mlflow_model_name}/{latest_version}")
 
 
 def select_latest_week(features: pd.DataFrame) -> pd.DataFrame:
