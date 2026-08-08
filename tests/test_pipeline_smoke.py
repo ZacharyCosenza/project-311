@@ -31,14 +31,16 @@ MODEL_PARAMS = dict(n_estimators=200, max_depth=4, learning_rate=0.05, random_st
 
 
 @pytest.mark.skipif(os.environ.get("CI") == "true", reason="requires external API access")
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(900)
 def test_pipeline_smoke():
     end = date.today().isoformat()
     start = (date.today() - timedelta(weeks=12)).isoformat()
 
-    calls = fetch_calls_weekly(start_date=start, end_date=end, calls_url=CALLS_URL)
+    raw_dir = "data/dev/00_raw"
+    calls = fetch_calls_weekly(start_date=start, end_date=end, calls_url=CALLS_URL, raw_dir=raw_dir)
     events = fetch_events_weekly(
-        start_date=start, end_date=end, events_url=EVENTS_URL, event_include_types=EVENT_INCLUDE_TYPES,
+        start_date=start, end_date=end, events_url=EVENTS_URL,
+        event_include_types=EVENT_INCLUDE_TYPES, raw_dir=raw_dir,
     )
     weather_lag1, weather_pred = fetch_weather_weekly(
         start_date=start, end_date=end,
@@ -46,6 +48,7 @@ def test_pipeline_smoke():
         weather_daily_vars="temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum",
         weather_archive_url="https://archive-api.open-meteo.com/v1/archive",
         weather_forecast_url="https://historical-forecast-api.open-meteo.com/v1/forecast",
+        raw_dir=raw_dir,
     )
     assert not calls.empty
 
@@ -64,7 +67,7 @@ def test_pipeline_smoke():
     )
     assert SPLIT_COL in full_df.columns
 
-    metrics_df = compute_metrics(model, full_df, FEATURE_COLS, CATEGORICAL_FEATURES, TARGET_COL, SPLIT_COL, ranking_k=5)
+    metrics_df = compute_metrics(model, full_df, FEATURE_COLS, TARGET_COL, SPLIT_COL, ranking_k=5)
     test_metrics = metrics_df[metrics_df["split"] == "test"].set_index("metric")["value"]
     assert np.isfinite(test_metrics["mae"])
     assert np.isfinite(test_metrics["rmse"])

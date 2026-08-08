@@ -7,13 +7,16 @@ def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
             func=fetch_calls_weekly,
-            inputs=["params:start_date", "params:end_date", "params:calls_url"],
+            inputs=["params:start_date", "params:end_date", "params:calls_url", "params:raw_dir"],
             outputs="calls_weekly",
             name="fetch_calls",
         ),
         node(
             func=fetch_events_weekly,
-            inputs=["params:start_date", "params:end_date", "params:events_url", "params:event_include_types"],
+            inputs=[
+                "params:start_date", "params:end_date", "params:events_url",
+                "params:event_include_types", "params:raw_dir",
+            ],
             outputs="events_weekly",
             name="fetch_events",
         ),
@@ -24,6 +27,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "params:weather_lat", "params:weather_lon",
                 "params:weather_daily_vars",
                 "params:weather_archive_url", "params:weather_forecast_url",
+                "params:raw_dir",
             ],
             outputs=["weather_lag1", "weather_pred"],
             name="fetch_weather",
