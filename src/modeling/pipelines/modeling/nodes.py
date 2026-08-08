@@ -3,6 +3,7 @@ from datetime import timedelta
 import matplotlib
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import shap
@@ -152,6 +153,7 @@ def log_to_mlflow(
     split_col: str,
     mlflow_tracking_uri: str,
     mlflow_experiment: str,
+    mlflow_model_name: str,
 ) -> None:
     numeric_features = [f for f in feature_cols if f not in categorical_features]
     X_train = modeling_data[modeling_data[split_col] == "train"][feature_cols]
@@ -166,6 +168,9 @@ def log_to_mlflow(
     mlflow.set_experiment(mlflow_experiment)
     with mlflow.start_run():
         mlflow.log_metrics(all_metrics)
+        # Registers a new version under mlflow_model_name — promoting one to the
+        # "champion" alias is a manual step (MLflow UI or client), not automatic.
+        mlflow.xgboost.log_model(model, name="model", registered_model_name=mlflow_model_name)
 
 
 def plot_feature_histograms(

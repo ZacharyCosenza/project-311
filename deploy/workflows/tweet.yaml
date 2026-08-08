@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: tweet
+  namespace: argo
+spec:
+  schedules:
+    - "*/10 * * * *"       # every 10 minutes — change to "0 6 * * 1" (Monday 06:00 UTC) for production
+  timezone: "America/New_York"
+  concurrencyPolicy: Forbid # skip if a run is already in progress
+  workflowSpec:
+    serviceAccountName: argo
+    entrypoint: tweet
+    volumes:
+      - name: data
+        hostPath:
+          path: /app/data
+    templates:
+      - name: tweet
+        container:
+          image: ghcr.io/zacharycosenza/modeling:latest
+          imagePullPolicy: Always
+          command: ["kedro", "run", "--pipeline", "tweet"]
+          env:
+            - name: KEDRO_ENV
+              value: "prod"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data

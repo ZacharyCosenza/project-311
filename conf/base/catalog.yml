@@ -49,3 +49,32 @@ metrics:
   type: pandas.CSVDataset
   filepath: data/dev/02_reporting/metrics.csv
 
+# Tweet layer — narrow rolling-window fetch + daily forecast outputs
+tweet_calls_weekly:
+  type: pandas.ParquetDataset
+  filepath: data/dev/00_raw/tweet_calls_weekly.parquet
+
+tweet_events_weekly:
+  type: pandas.ParquetDataset
+  filepath: data/dev/00_raw/tweet_events_weekly.parquet
+
+tweet_weather_lag1:
+  type: pandas.ParquetDataset
+  filepath: data/dev/00_raw/tweet_weather_lag1.parquet
+
+tweet_weather_pred:
+  type: pandas.ParquetDataset
+  filepath: data/dev/00_raw/tweet_weather_pred.parquet
+
+tweet_features:
+  type: pandas.ParquetDataset
+  filepath: data/dev/01_processed/tweet_features.parquet
+
+top_k_districts:
+  type: pandas.CSVDataset
+  filepath: data/dev/02_reporting/top_k_districts.csv
+
+tweet_text:
+  type: text.TextDataset
+  filepath: data/dev/02_reporting/tweet.txt
+

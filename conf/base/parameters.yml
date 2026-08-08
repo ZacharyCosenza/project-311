@@ -62,3 +62,8 @@ raw_dir: "data/dev/00_raw"
 report_dir: "data/dev/02_reporting"
 mlflow_tracking_uri: "sqlite:///data/dev/02_reporting/mlflow.db"
 mlflow_experiment: "311-modeling"
+mlflow_model_name: "311-modeling"
+
+# Tweet pipeline
+lookback_weeks: 3
+top_k: 5

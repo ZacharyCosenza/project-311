@@ -185,7 +185,8 @@ deploy/
   rbac.yaml              # Role + RoleBinding for argo service account
   application.yaml       # Argo CD Application (bootstrap once, then git push is enough)
   workflows/
-    train.yaml           # CronWorkflow: weekly retrain
+    train.yaml           # CronWorkflow: retrain + register model in mlflow
+    tweet.yaml            # CronWorkflow: daily forecast + tweet (champion model promoted manually in mlflow)
 ```
 
 ## RBAC
