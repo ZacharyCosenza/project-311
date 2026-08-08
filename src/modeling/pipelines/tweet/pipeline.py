@@ -8,7 +8,6 @@ from .nodes import (
     compute_predict_window,
     compute_top_k,
     format_tweet,
-    load_latest_model,
     publish_tweet,
     select_latest_week,
 )
@@ -88,15 +87,9 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="select_latest_week",
         ),
         node(
-            func=load_latest_model,
-            inputs=["params:mlflow_tracking_uri", "params:mlflow_model_name"],
-            outputs="latest_model",
-            name="load_latest_model",
-        ),
-        node(
             func=compute_top_k,
             inputs=[
-                "latest_model", "tweet_latest_features",
+                "model", "tweet_latest_features",
                 "params:feature_cols", "params:target_col", "params:top_k",
             ],
             outputs="top_k_districts",

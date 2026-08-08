@@ -1,8 +1,6 @@
 import sys
 from datetime import date, timedelta
 
-import mlflow
-import mlflow.xgboost
 import pandas as pd
 from xgboost import XGBRegressor
 
@@ -14,16 +12,6 @@ def compute_predict_window(lookback_weeks: int) -> tuple[str, str]:
     end_date = date.today().isoformat()
     start_date = (date.today() - timedelta(weeks=lookback_weeks)).isoformat()
     return start_date, end_date
-
-
-def load_latest_model(mlflow_tracking_uri: str, mlflow_model_name: str) -> XGBRegressor:
-    # Loads the highest registered version, no manual promotion required.
-    # Swap back to `models:/{mlflow_model_name}@champion` once manual gating is wanted again.
-    mlflow.set_tracking_uri(mlflow_tracking_uri)
-    client = mlflow.MlflowClient()
-    versions = client.search_model_versions(f"name='{mlflow_model_name}'")
-    latest_version = max(int(v.version) for v in versions)
-    return mlflow.xgboost.load_model(f"models:/{mlflow_model_name}/{latest_version}")
 
 
 def select_latest_week(features: pd.DataFrame) -> pd.DataFrame:
