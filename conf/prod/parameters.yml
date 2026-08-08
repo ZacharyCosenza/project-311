@@ -1,0 +1,2 @@
+report_dir: "data/prod/02_reporting"
+mlflow_tracking_uri: "sqlite:////app/data/prod/02_reporting/mlflow.db"

@@ -2,8 +2,10 @@ from datetime import timedelta
 
 import matplotlib
 import matplotlib.pyplot as plt
+import mlflow
 import numpy as np
 import pandas as pd
+import shap
 from sklearn.inspection import partial_dependence
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
@@ -32,6 +34,26 @@ def _split(
     df.loc[val.index, split_col] = "val"
     df.loc[test.index, split_col] = "test"
     return df
+
+
+def _input_drift_metrics(X: pd.DataFrame, numeric_features: list) -> dict:
+    """Mean and std per numeric feature — tracks input distribution shift."""
+    return {
+        **{f"input_mean_{col}": float(X[col].mean()) for col in numeric_features},
+        **{f"input_std_{col}": float(X[col].std()) for col in numeric_features},
+    }
+
+
+def _shap_drift_metrics(model: XGBRegressor, X: pd.DataFrame, feature_cols: list) -> dict:
+    """Mean and std of |SHAP values| per feature — tracks concept drift."""
+    explainer = shap.TreeExplainer(model)
+    shap_vals = pd.DataFrame(
+        explainer.shap_values(X, check_additivity=False), columns=feature_cols
+    )
+    return {
+        **{f"shap_mean_{col}": float(shap_vals[col].abs().mean()) for col in feature_cols},
+        **{f"shap_std_{col}": float(shap_vals[col].abs().std()) for col in feature_cols},
+    }
 
 
 def training(
@@ -64,9 +86,7 @@ def inference(
     return result
 
 
-def _ranking_metrics(
-    df: pd.DataFrame, score_col: str, target_col: str, k: int,
-) -> dict:
+def _ranking_metrics(df: pd.DataFrame, score_col: str, target_col: str, k: int) -> dict:
     def week_metrics(g):
         actual_sorted = g.sort_values(target_col, ascending=False)
         pred_sorted = g.sort_values(score_col, ascending=False)
@@ -96,7 +116,6 @@ def compute_metrics(
     model: XGBRegressor,
     modeling_data: pd.DataFrame,
     feature_cols: list,
-    categorical_features: list,
     target_col: str,
     split_col: str,
     ranking_k: int,
@@ -124,13 +143,41 @@ def compute_metrics(
     return pd.DataFrame(rows)
 
 
+def log_to_mlflow(
+    model: XGBRegressor,
+    modeling_data: pd.DataFrame,
+    metrics: pd.DataFrame,
+    feature_cols: list,
+    categorical_features: list,
+    split_col: str,
+    mlflow_tracking_uri: str,
+    mlflow_experiment: str,
+) -> None:
+    numeric_features = [f for f in feature_cols if f not in categorical_features]
+    X_train = modeling_data[modeling_data[split_col] == "train"][feature_cols]
+
+    all_metrics = {
+        **{f"{r.split}_{r.metric}": r.value for r in metrics.itertuples()},
+        **_input_drift_metrics(X_train, numeric_features),
+        **_shap_drift_metrics(model, X_train, feature_cols),
+    }
+
+    mlflow.set_tracking_uri(mlflow_tracking_uri)
+    mlflow.set_experiment(mlflow_experiment)
+    with mlflow.start_run():
+        mlflow.log_metrics(all_metrics)
+
+
 def plot_feature_histograms(
     model: XGBRegressor,
     modeling_data: pd.DataFrame,
     feature_cols: list,
     categorical_features: list,
     split_col: str,
-) -> plt.Figure:
+    report_dir: str,
+) -> None:
+    from pathlib import Path
+
     numeric_features = [f for f in feature_cols if f not in categorical_features]
     categorical_mask = [f in categorical_features for f in feature_cols]
     train_df = modeling_data[modeling_data[split_col] == "train"]
@@ -146,4 +193,8 @@ def plot_feature_histograms(
         ax2.plot(pdp["grid_values"][0], pdp["average"][0], color="tomato", linewidth=2)
         ax2.set_yticks([])
     plt.tight_layout()
-    return fig
+
+    out = Path(report_dir) / "feature_histograms.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out)
+    plt.close(fig)

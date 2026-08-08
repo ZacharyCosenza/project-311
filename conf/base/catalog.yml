@@ -49,8 +49,3 @@ metrics:
   type: pandas.CSVDataset
   filepath: data/dev/02_reporting/metrics.csv
 
-feature_histograms:
-  type: matplotlib.MatplotlibWriter
-  filepath: data/dev/02_reporting/feature_histograms.png
-  save_args:
-    format: png
