@@ -5,7 +5,7 @@ metadata:
   namespace: argo
 spec:
   schedules:
-    - "*/10 * * * *"       # every 10 minutes — change to "0 6 * * 1" (Monday 06:00 UTC) for production
+    - "0 7 * * *"           # daily, 7:00 AM America/New_York
   timezone: "America/New_York"
   concurrencyPolicy: Forbid # skip if a run is already in progress
   workflowSpec:
