@@ -8,3 +8,4 @@ mlruns/
 .secrets/
 *.egg-info
 /images
+/secrets

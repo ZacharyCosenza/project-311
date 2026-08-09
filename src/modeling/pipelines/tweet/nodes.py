@@ -1,7 +1,9 @@
+import os
 import sys
 from datetime import date, timedelta
 
 import pandas as pd
+import tweepy
 from xgboost import XGBRegressor
 
 from modeling.pipelines.modeling.nodes import inference
@@ -31,16 +33,26 @@ def compute_top_k(
 def format_tweet(top_k_districts: pd.DataFrame, target_col: str) -> str:
     pred_col = f"pred_{target_col}"
     week_start = top_k_districts["week_start"].iloc[0]
-    lines = [
-        f"NYC 311 forecast — week of {week_start}",
-        "Predicted top community districts by call volume:",
-    ]
+    lines = ["TEST_TWEET", f"Week of {week_start}:"]
     for i, row in enumerate(top_k_districts.itertuples(), start=1):
-        lines.append(f"{i}. {row.board_key} — ~{getattr(row, pred_col):,.0f} calls")
+        pred = round(getattr(row, pred_col))
+        lines.append(f"{i}. {row.board_key} — {pred:,} calls")
     return "\n".join(lines)
 
 
 def publish_tweet(tweet_text: str) -> None:
-    # Placeholder — no Twitter API credentials wired up yet. Prints so it's visible
-    # in kedro/argo logs; swap in a real client call (e.g. tweepy) here.
-    print(f"[publish_tweet] would post:\n{tweet_text}", file=sys.stderr)
+    api_key = os.environ.get("TWITTER_API_KEY")
+    api_secret = os.environ.get("TWITTER_API_SECRET")
+    access_token = os.environ.get("TWITTER_ACCESS_TOKEN")
+    access_token_secret = os.environ.get("TWITTER_ACCESS_TOKEN_SECRET")
+
+    if not all([api_key, api_secret, access_token, access_token_secret]):
+        print(f"[publish_tweet] no Twitter credentials set, not posting. Would post:\n{tweet_text}", file=sys.stderr)
+        return
+
+    client = tweepy.Client(
+        consumer_key=api_key, consumer_secret=api_secret,
+        access_token=access_token, access_token_secret=access_token_secret,
+    )
+    response = client.create_tweet(text=tweet_text)
+    print(f"[publish_tweet] posted: {response.data}", file=sys.stderr)
