@@ -126,12 +126,19 @@ def fetch_weather_weekly(
     weather_daily_vars: str,
     weather_archive_url: str, weather_forecast_url: str,
     raw_dir: str,
+    forecast_end_date: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    # forecast_end_date lets the forecast leg reach further ahead than the archive leg —
+    # the archive (actual/historical) API can't return data for dates that haven't
+    # happened yet, so it always stays bounded by end_date. Defaults to end_date,
+    # matching training's behavior where both legs share one range.
+    forecast_end_date = forecast_end_date or end_date
+
     def fetch():
-        def fetch_one(base_url):
+        def fetch_one(base_url, end):
             rows = requests.get(base_url, params={
                 "latitude": weather_lat, "longitude": weather_lon,
-                "start_date": start_date, "end_date": end_date,
+                "start_date": start_date, "end_date": end,
                 "daily": weather_daily_vars, "timezone": "America/New_York",
             }, timeout=60).json()["daily"]
             w = pd.DataFrame(rows)
@@ -144,8 +151,8 @@ def fetch_weather_weekly(
                 had_snow=("snowfall_sum", lambda s: int((s > 0).any())),
             ).reset_index()
 
-        actual = fetch_one(weather_archive_url)
-        forecast = fetch_one(weather_forecast_url)
+        actual = fetch_one(weather_archive_url, end_date)
+        forecast = fetch_one(weather_forecast_url, forecast_end_date)
 
         lag1 = actual.rename(columns={
             "temp_max": "lag1_temp_max", "temp_min": "lag1_temp_min",

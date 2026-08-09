@@ -4,13 +4,7 @@ from modeling.pipelines.features.nodes import featurize_events, featurize_lags, 
 from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_events_weekly, fetch_weather_weekly
 from modeling.pipelines.target.nodes import build_target
 
-from .nodes import (
-    compute_predict_window,
-    compute_top_k,
-    format_tweet,
-    publish_tweet,
-    select_latest_week,
-)
+from .nodes import build_next_week_features, compute_predict_window, compute_top_k, format_tweet, publish_tweet
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -18,7 +12,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=compute_predict_window,
             inputs="params:lookback_weeks",
-            outputs=["tweet_start_date", "tweet_end_date"],
+            outputs=["tweet_start_date", "tweet_end_date", "tweet_forecast_end_date"],
             name="compute_predict_window",
         ),
         node(
@@ -30,7 +24,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=fetch_events_weekly,
             inputs=[
-                "tweet_start_date", "tweet_end_date", "params:events_url",
+                "tweet_start_date", "tweet_forecast_end_date", "params:events_url",
                 "params:event_include_types", "params:raw_dir",
             ],
             outputs="tweet_events_weekly",
@@ -42,7 +36,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "tweet_start_date", "tweet_end_date",
                 "params:weather_lat", "params:weather_lon", "params:weather_daily_vars",
                 "params:weather_archive_url", "params:weather_forecast_url",
-                "params:raw_dir",
+                "params:raw_dir", "tweet_forecast_end_date",
             ],
             outputs=["tweet_weather_lag1", "tweet_weather_pred"],
             name="tweet_fetch_weather",
@@ -81,15 +75,18 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="tweet_join_features",
         ),
         node(
-            func=select_latest_week,
-            inputs="tweet_features",
-            outputs="tweet_latest_features",
-            name="select_latest_week",
+            func=build_next_week_features,
+            inputs=[
+                "tweet_features", "tweet_event_features", "tweet_weather_features",
+                "modeling_data", "params:target_col",
+            ],
+            outputs="tweet_next_week_features",
+            name="build_next_week_features",
         ),
         node(
             func=compute_top_k,
             inputs=[
-                "model", "tweet_latest_features",
+                "model", "tweet_next_week_features",
                 "params:feature_cols", "params:target_col", "params:top_k",
             ],
             outputs="top_k_districts",
