@@ -4,7 +4,14 @@ from modeling.pipelines.features.nodes import featurize_events, featurize_lags, 
 from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_events_weekly, fetch_weather_weekly
 from modeling.pipelines.target.nodes import build_target
 
-from .nodes import build_next_week_features, compute_predict_window, compute_top_k, format_tweet, publish_tweet
+from .nodes import (
+    build_next_week_features,
+    compute_predict_window,
+    compute_top_k,
+    format_tweet,
+    log_tweet_to_mlflow,
+    publish_tweet,
+)
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -97,6 +104,15 @@ def create_pipeline(**kwargs) -> Pipeline:
             inputs=["top_k_districts", "params:target_col"],
             outputs="tweet_text",
             name="format_tweet",
+        ),
+        node(
+            func=log_tweet_to_mlflow,
+            inputs=[
+                "tweet_text", "top_k_districts", "params:target_col",
+                "params:mlflow_tracking_uri", "params:mlflow_tweet_experiment",
+            ],
+            outputs=None,
+            name="log_tweet_to_mlflow",
         ),
         node(
             func=publish_tweet,

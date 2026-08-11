@@ -2,6 +2,7 @@ import os
 import sys
 from datetime import date, timedelta
 
+import mlflow
 import numpy as np
 import pandas as pd
 import tweepy
@@ -77,6 +78,23 @@ def format_tweet(top_k_districts: pd.DataFrame, target_col: str) -> str:
         pred = round(getattr(row, pred_col))
         lines.append(f"{i}. {row.board_key} — {pred:,} calls")
     return "\n".join(lines)
+
+
+def log_tweet_to_mlflow(
+    tweet_text: str, top_k_districts: pd.DataFrame, target_col: str,
+    mlflow_tracking_uri: str, mlflow_tweet_experiment: str,
+) -> None:
+    pred_col = f"pred_{target_col}"
+    mlflow.set_tracking_uri(mlflow_tracking_uri)
+    mlflow.set_experiment(mlflow_tweet_experiment)
+    with mlflow.start_run():
+        mlflow.log_params({
+            "week_start": str(top_k_districts["week_start"].iloc[0]),
+            "top_board": top_k_districts["board_key"].iloc[0],
+            "top_pred_calls": round(top_k_districts[pred_col].iloc[0]),
+        })
+        mlflow.log_text(tweet_text, "tweet.txt")
+        mlflow.log_text(top_k_districts.to_csv(index=False), "top_k_districts.csv")
 
 
 def publish_tweet(tweet_text: str) -> None:

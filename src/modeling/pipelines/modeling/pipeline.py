@@ -31,6 +31,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "model", "modeling_data", "metrics",
                 "params:feature_cols", "params:categorical_features", "params:split_col",
                 "params:mlflow_tracking_uri", "params:mlflow_experiment", "params:mlflow_model_name",
+                "params:model_params", "params:report_dir",
             ],
             outputs=None,
             name="log_to_mlflow",

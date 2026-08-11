@@ -1,4 +1,6 @@
-from datetime import timedelta
+import pickle
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -16,7 +18,6 @@ matplotlib.use("Agg")
 
 
 def _pre_processing(df: pd.DataFrame) -> pd.DataFrame:
-    # Currently a no-op; hook for future row-level filtering before training.
     return df.copy()
 
 
@@ -154,6 +155,8 @@ def log_to_mlflow(
     mlflow_tracking_uri: str,
     mlflow_experiment: str,
     mlflow_model_name: str,
+    model_params: dict,
+    report_dir: str,
 ) -> None:
     numeric_features = [f for f in feature_cols if f not in categorical_features]
     X_train = modeling_data[modeling_data[split_col] == "train"][feature_cols]
@@ -168,8 +171,17 @@ def log_to_mlflow(
     mlflow.set_experiment(mlflow_experiment)
     with mlflow.start_run():
         mlflow.log_metrics(all_metrics)
-        # Registers a new version under mlflow_model_name — promoting one to the
-        # "champion" alias is a manual step (MLflow UI or client), not automatic.
+        mlflow.log_params(model_params)
+
+        # MLflow's own artifact store defaults to a path relative to the process's cwd
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        artifact_dir = Path(report_dir) / "mlartifacts"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_dir / f"model_{timestamp}.pkl"
+        with open(artifact_path, "wb") as f:
+            pickle.dump(model, f)
+        mlflow.log_param("model_artifact_path", str(artifact_path))
+        mlflow.set_tag("trained_at_utc", timestamp)
         mlflow.xgboost.log_model(model, name="model", registered_model_name=mlflow_model_name)
 
 
