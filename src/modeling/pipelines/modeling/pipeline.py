@@ -1,6 +1,6 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import compute_metrics, log_to_mlflow, plot_feature_histograms, training
+from .nodes import compute_metrics, log_to_mlflow, plot_feature_histograms, plot_feature_timeseries, training
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -45,5 +45,11 @@ def create_pipeline(**kwargs) -> Pipeline:
             ],
             outputs=None,
             name="plot_histograms",
+        ),
+        node(
+            func=plot_feature_timeseries,
+            inputs=["modeling_data", "params:feature_cols", "params:categorical_features", "params:report_dir"],
+            outputs=None,
+            name="plot_feature_timeseries",
         ),
     ])

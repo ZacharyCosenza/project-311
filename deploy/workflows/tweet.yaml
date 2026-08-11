@@ -5,7 +5,7 @@ metadata:
   namespace: argo
 spec:
   schedules:
-    - "0 8 * * *"           # daily, 8:00 AM America/New_York
+    - "0 8 * * 1"           # Mondays only, 8:00 AM America/New_York
   timezone: "America/New_York"
   concurrencyPolicy: Forbid # skip if a run is already in progress
   workflowSpec:

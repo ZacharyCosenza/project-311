@@ -215,3 +215,27 @@ def plot_feature_histograms(
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out)
     plt.close(fig)
+
+
+def plot_feature_timeseries(
+    modeling_data: pd.DataFrame, feature_cols: list, categorical_features: list, report_dir: str,
+) -> None:
+    """Mean ± std of each numeric feature per week (the spine's time column) — a quick
+    way to spot distribution drift over time, across all splits (not just train) so the
+    time axis stays continuous."""
+    numeric_features = [f for f in feature_cols if f not in categorical_features]
+    weekly = modeling_data.groupby("week_start")[numeric_features].agg(["mean", "std"])
+
+    fig, axes = plt.subplots(3, 4, figsize=(18, 12))
+    for ax, col in zip(axes.flat, numeric_features):
+        mean, std = weekly[(col, "mean")], weekly[(col, "std")]
+        ax.plot(mean.index, mean.values, color="#2563eb", linewidth=1.5)
+        ax.fill_between(mean.index, mean.values - std.values, mean.values + std.values, color="#93c5fd", alpha=0.4)
+        ax.set_title(col, fontsize=9)
+        ax.tick_params(axis="x", rotation=45, labelsize=6)
+    plt.tight_layout()
+
+    out = Path(report_dir) / "feature_timeseries.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out)
+    plt.close(fig)
