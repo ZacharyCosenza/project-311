@@ -1,123 +1,85 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from modeling.pipelines.features.nodes import featurize_events, featurize_lags, featurize_weather, join_features
-from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_events_weekly, fetch_weather_weekly
-from modeling.pipelines.target.nodes import build_target
-
 from .nodes import (
-    build_next_week_features,
-    compute_predict_window,
-    compute_top_k,
-    format_tweet,
+    format_daily_deep_dive,
+    format_weekly_summary,
     log_tweet_to_mlflow,
+    plot_daily_trend,
+    plot_district_map,
     publish_tweet,
+    select_daily_district,
 )
 
 
-def create_pipeline(**kwargs) -> Pipeline:
+def create_summary_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
-            func=compute_predict_window,
-            inputs="params:lookback_weeks",
-            outputs=["tweet_start_date", "tweet_end_date", "tweet_forecast_end_date"],
-            name="compute_predict_window",
+            func=format_weekly_summary,
+            inputs=["inference_results", "params:target_col", "params:top_k"],
+            outputs="tweet_summary_text",
+            name="format_weekly_summary",
         ),
         node(
-            func=fetch_calls_weekly,
-            inputs=["tweet_start_date", "tweet_end_date", "params:calls_url", "params:raw_dir"],
-            outputs="tweet_calls_weekly",
-            name="tweet_fetch_calls",
-        ),
-        node(
-            func=fetch_events_weekly,
+            func=plot_district_map,
             inputs=[
-                "tweet_start_date", "tweet_forecast_end_date", "params:events_url",
-                "params:event_include_types", "params:raw_dir",
+                "inference_results", "params:target_col",
+                "params:districts_url", "params:boro_names", "params:raw_dir", "params:report_dir",
+                "params:map_colors", "params:districts_retries", "params:districts_backoff_seconds",
             ],
-            outputs="tweet_events_weekly",
-            name="tweet_fetch_events",
-        ),
-        node(
-            func=fetch_weather_weekly,
-            inputs=[
-                "tweet_start_date", "tweet_end_date",
-                "params:weather_lat", "params:weather_lon", "params:weather_daily_vars",
-                "params:weather_archive_url", "params:weather_forecast_url",
-                "params:raw_dir", "tweet_forecast_end_date",
-            ],
-            outputs=["tweet_weather_lag1", "tweet_weather_pred"],
-            name="tweet_fetch_weather",
-        ),
-        node(
-            func=build_target,
-            inputs=["tweet_calls_weekly", "params:target_col"],
-            outputs="tweet_target",
-            name="tweet_build_target",
-        ),
-        node(
-            func=featurize_lags,
-            inputs=["tweet_target", "params:target_col"],
-            outputs="tweet_lag_features",
-            name="tweet_featurize_lags",
-        ),
-        node(
-            func=featurize_events,
-            inputs="tweet_events_weekly",
-            outputs="tweet_event_features",
-            name="tweet_featurize_events",
-        ),
-        node(
-            func=featurize_weather,
-            inputs=["tweet_weather_lag1", "tweet_weather_pred"],
-            outputs="tweet_weather_features",
-            name="tweet_featurize_weather",
-        ),
-        node(
-            func=join_features,
-            inputs=[
-                "tweet_target", "tweet_lag_features", "tweet_event_features", "tweet_weather_features",
-                "params:feature_cols", "params:categorical_features",
-            ],
-            outputs="tweet_features",
-            name="tweet_join_features",
-        ),
-        node(
-            func=build_next_week_features,
-            inputs=[
-                "tweet_features", "tweet_event_features", "tweet_weather_features",
-                "modeling_data", "params:target_col",
-            ],
-            outputs="tweet_next_week_features",
-            name="build_next_week_features",
-        ),
-        node(
-            func=compute_top_k,
-            inputs=[
-                "model", "tweet_next_week_features",
-                "params:feature_cols", "params:target_col", "params:top_k",
-            ],
-            outputs="top_k_districts",
-            name="compute_top_k",
-        ),
-        node(
-            func=format_tweet,
-            inputs=["top_k_districts", "params:target_col"],
-            outputs="tweet_text",
-            name="format_tweet",
+            outputs="district_map_path",
+            name="plot_district_map",
         ),
         node(
             func=log_tweet_to_mlflow,
             inputs=[
-                "tweet_text", "top_k_districts", "params:target_col",
+                "tweet_summary_text", "district_map_path",
                 "params:mlflow_tracking_uri", "params:mlflow_tweet_experiment",
             ],
             outputs=None,
-            name="log_tweet_to_mlflow",
+            name="log_summary_to_mlflow",
         ),
         node(
             func=publish_tweet,
-            inputs="tweet_text",
+            inputs=["tweet_summary_text", "district_map_path"],
             outputs=None,
-            name="publish_tweet",
+            name="publish_summary_tweet",
+        ),
+    ])
+
+
+def create_daily_pipeline(**kwargs) -> Pipeline:
+    return pipeline([
+        node(
+            func=select_daily_district,
+            inputs=["inference_results", "params:weekday_to_rank"],
+            outputs="daily_district",
+            name="select_daily_district",
+        ),
+        node(
+            func=format_daily_deep_dive,
+            inputs=["daily_district", "params:target_col"],
+            outputs="tweet_daily_text",
+            name="format_daily_deep_dive",
+        ),
+        node(
+            func=plot_daily_trend,
+            inputs=["daily_district", "modeling_data", "params:target_col", "params:report_dir"],
+            outputs="daily_trend_path",
+            name="plot_daily_trend",
+        ),
+        node(
+            func=log_tweet_to_mlflow,
+            inputs=[
+                "tweet_daily_text", "daily_trend_path",
+                "params:mlflow_tracking_uri", "params:mlflow_tweet_daily_experiment",
+            ],
+            outputs=None,
+            name="log_daily_to_mlflow",
+        ),
+        node(
+            func=publish_tweet,
+            inputs=["tweet_daily_text", "daily_trend_path"],
+            outputs=None,
+            name="publish_daily_tweet",
         ),
     ])

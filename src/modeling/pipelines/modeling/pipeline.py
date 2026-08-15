@@ -1,6 +1,13 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import compute_metrics, log_to_mlflow, plot_feature_histograms, plot_feature_timeseries, training
+from .nodes import (
+    compute_metrics,
+    log_to_mlflow,
+    plot_feature_histograms,
+    plot_feature_timeseries,
+    plot_shap_beeswarm,
+    training,
+)
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -51,5 +58,11 @@ def create_pipeline(**kwargs) -> Pipeline:
             inputs=["modeling_data", "params:feature_cols", "params:categorical_features", "params:report_dir"],
             outputs=None,
             name="plot_feature_timeseries",
+        ),
+        node(
+            func=plot_shap_beeswarm,
+            inputs=["model", "modeling_data", "params:feature_cols", "params:split_col", "params:report_dir"],
+            outputs=None,
+            name="plot_shap_beeswarm",
         ),
     ])

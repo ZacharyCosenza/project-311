@@ -6,9 +6,6 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-RETRIES = 3
-BACKOFF_SECONDS = 5.0
-
 
 def _iso_year(yr: int, mo: int, woy: int) -> int:
     if mo == 1 and woy >= 52:
@@ -22,17 +19,17 @@ def _iso_week_monday(yr: int, mo: int, woy: int) -> date:
     return date.fromisocalendar(_iso_year(yr, mo, woy), woy, 1)
 
 
-def _with_fallback(fetch, name: str, *fallback_paths: str):
+def _with_fallback(fetch, name: str, retries: int, backoff_seconds: float, *fallback_paths: str):
     """Retry `fetch`, falling back to the last saved raw parquet(s) on repeated failure."""
-    for attempt in range(1, RETRIES + 1):
+    for attempt in range(1, retries + 1):
         try:
             return fetch()
         except Exception as e:
-            print(f"[{name}] attempt {attempt}/{RETRIES} failed: {e}", file=sys.stderr)
-            if attempt < RETRIES:
-                time.sleep(BACKOFF_SECONDS * attempt)
+            print(f"[{name}] attempt {attempt}/{retries} failed: {e}", file=sys.stderr)
+            if attempt < retries:
+                time.sleep(backoff_seconds * attempt)
 
-    print(f"[{name}] all {RETRIES} attempts failed, falling back to previous raw data", file=sys.stderr)
+    print(f"[{name}] all {retries} attempts failed, falling back to previous raw data", file=sys.stderr)
     try:
         results = tuple(pd.read_parquet(p) for p in fallback_paths)
     except Exception as e:
@@ -41,7 +38,9 @@ def _with_fallback(fetch, name: str, *fallback_paths: str):
     return results[0] if len(results) == 1 else results
 
 
-def fetch_calls_weekly(start_date: str, end_date: str, calls_url: str, raw_dir: str) -> pd.DataFrame:
+def fetch_calls_weekly(
+    start_date: str, end_date: str, calls_url: str, raw_dir: str, retries: int, backoff_seconds: float,
+) -> pd.DataFrame:
     def fetch():
         select = (
             "community_board, date_extract_y(created_date) as yr, "
@@ -66,11 +65,14 @@ def fetch_calls_weekly(start_date: str, end_date: str, calls_url: str, raw_dir: 
         df["board_key"] = df["community_board"]
         return df.groupby(["board_key", "week_start"])["calls"].sum().reset_index()
 
-    return _with_fallback(fetch, "fetch_calls_weekly", str(Path(raw_dir) / "calls_weekly.parquet"))
+    return _with_fallback(
+        fetch, "fetch_calls_weekly", retries, backoff_seconds, str(Path(raw_dir) / "calls_weekly.parquet"),
+    )
 
 
 def fetch_events_weekly(
-    start_date: str, end_date: str, events_url: str, event_include_types: list, raw_dir: str
+    start_date: str, end_date: str, events_url: str, event_include_types: list,
+    raw_dir: str, retries: int, backoff_seconds: float,
 ) -> pd.DataFrame:
     def fetch():
         type_list = ",".join(f"'{t}'" for t in event_include_types)
@@ -117,7 +119,9 @@ def fetch_events_weekly(
                 })
         return pd.DataFrame(rows).groupby(["board_key", "week_start"])["n"].sum().reset_index(name="event_count")
 
-    return _with_fallback(fetch, "fetch_events_weekly", str(Path(raw_dir) / "events_weekly.parquet"))
+    return _with_fallback(
+        fetch, "fetch_events_weekly", retries, backoff_seconds, str(Path(raw_dir) / "events_weekly.parquet"),
+    )
 
 
 def fetch_weather_weekly(
@@ -125,7 +129,7 @@ def fetch_weather_weekly(
     weather_lat: float, weather_lon: float,
     weather_daily_vars: str,
     weather_archive_url: str, weather_forecast_url: str,
-    raw_dir: str,
+    raw_dir: str, retries: int, backoff_seconds: float,
     forecast_end_date: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     # forecast_end_date lets the forecast leg reach further ahead than the archive leg —
@@ -167,6 +171,6 @@ def fetch_weather_weekly(
         return lag1, pred
 
     return _with_fallback(
-        fetch, "fetch_weather_weekly",
+        fetch, "fetch_weather_weekly", retries, backoff_seconds,
         str(Path(raw_dir) / "weather_lag1.parquet"), str(Path(raw_dir) / "weather_pred.parquet"),
     )

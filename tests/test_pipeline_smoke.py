@@ -37,10 +37,16 @@ def test_pipeline_smoke():
     start = (date.today() - timedelta(weeks=12)).isoformat()
 
     raw_dir = "data/dev/00_raw"
-    calls = fetch_calls_weekly(start_date=start, end_date=end, calls_url=CALLS_URL, raw_dir=raw_dir)
+    retries = 3
+    backoff_seconds = 5.0
+    calls = fetch_calls_weekly(
+        start_date=start, end_date=end, calls_url=CALLS_URL, raw_dir=raw_dir,
+        retries=retries, backoff_seconds=backoff_seconds,
+    )
     events = fetch_events_weekly(
         start_date=start, end_date=end, events_url=EVENTS_URL,
         event_include_types=EVENT_INCLUDE_TYPES, raw_dir=raw_dir,
+        retries=retries, backoff_seconds=backoff_seconds,
     )
     weather_lag1, weather_pred = fetch_weather_weekly(
         start_date=start, end_date=end,
@@ -48,7 +54,7 @@ def test_pipeline_smoke():
         weather_daily_vars="temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum",
         weather_archive_url="https://archive-api.open-meteo.com/v1/archive",
         weather_forecast_url="https://historical-forecast-api.open-meteo.com/v1/forecast",
-        raw_dir=raw_dir,
+        raw_dir=raw_dir, retries=retries, backoff_seconds=backoff_seconds,
     )
     assert not calls.empty
 

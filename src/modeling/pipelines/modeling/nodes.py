@@ -239,3 +239,20 @@ def plot_feature_timeseries(
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out)
     plt.close(fig)
+
+
+def plot_shap_beeswarm(
+    model: XGBRegressor, modeling_data: pd.DataFrame, feature_cols: list, split_col: str, report_dir: str,
+) -> None:
+    train_df = modeling_data[modeling_data[split_col] == "train"]
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(train_df[feature_cols], check_additivity=False)
+
+    fig = plt.figure(figsize=(10, 8))
+    shap.summary_plot(shap_values, train_df[feature_cols], show=False)
+    plt.tight_layout()
+
+    out = Path(report_dir) / "shap_beeswarm.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)

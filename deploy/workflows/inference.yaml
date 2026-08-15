@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: inference
+  namespace: argo
+spec:
+  schedules:
+    - "0 8 * * 1"           # Mondays only, 8:00 AM America/New_York — after that day's 7 AM train
+  timezone: "America/New_York"
+  concurrencyPolicy: Forbid # skip if a run is already in progress
+  workflowSpec:
+    serviceAccountName: argo
+    entrypoint: inference
+    volumes:
+      - name: data
+        hostPath:
+          path: /app/data
+    templates:
+      - name: inference
+        container:
+          image: ghcr.io/zacharycosenza/modeling:latest
+          imagePullPolicy: Always
+          command: ["kedro", "run", "--pipeline", "inference"]
+          env:
+            - name: KEDRO_ENV
+              value: "prod"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data

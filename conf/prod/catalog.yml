@@ -47,31 +47,14 @@ metrics:
   type: pandas.CSVDataset
   filepath: data/prod/02_reporting/metrics.csv
 
-tweet_calls_weekly:
+inference_results:
   type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/tweet_calls_weekly.parquet
+  filepath: data/prod/02_reporting/inference_results.parquet
 
-tweet_events_weekly:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/tweet_events_weekly.parquet
-
-tweet_weather_lag1:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/tweet_weather_lag1.parquet
-
-tweet_weather_pred:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/tweet_weather_pred.parquet
-
-tweet_features:
-  type: pandas.ParquetDataset
-  filepath: data/prod/01_processed/tweet_features.parquet
-
-top_k_districts:
-  type: pandas.CSVDataset
-  filepath: data/prod/02_reporting/top_k_districts.csv
-
-tweet_text:
+tweet_summary_text:
   type: text.TextDataset
-  filepath: data/prod/02_reporting/tweet.txt
+  filepath: data/prod/02_reporting/tweet_summary.txt
 
+tweet_daily_text:
+  type: text.TextDataset
+  filepath: data/prod/02_reporting/tweet_daily.txt

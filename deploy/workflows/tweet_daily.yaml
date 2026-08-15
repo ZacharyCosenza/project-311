@@ -1,26 +1,26 @@
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
-  name: tweet
+  name: tweet-daily
   namespace: argo
 spec:
   schedules:
-    - "0 8 * * 1"           # Mondays only, 8:00 AM America/New_York
+    - "20 8 * * 1-5"        # Mon-Fri, 8:20 AM America/New_York — reads Monday's inference_results
   timezone: "America/New_York"
   concurrencyPolicy: Forbid # skip if a run is already in progress
   workflowSpec:
     serviceAccountName: argo
-    entrypoint: tweet
+    entrypoint: tweet-daily
     volumes:
       - name: data
         hostPath:
           path: /app/data
     templates:
-      - name: tweet
+      - name: tweet-daily
         container:
           image: ghcr.io/zacharycosenza/modeling:latest
           imagePullPolicy: Always
-          command: ["kedro", "run", "--pipeline", "tweet"]
+          command: ["kedro", "run", "--pipeline", "tweet_daily"]
           env:
             - name: KEDRO_ENV
               value: "prod"
