@@ -21,6 +21,9 @@ spec:
           image: ghcr.io/zacharycosenza/modeling:latest
           imagePullPolicy: Always
           command: ["kedro", "run", "--pipeline", "tweet_summary"]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
           env:
             - name: KEDRO_ENV
               value: "prod"

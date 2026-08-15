@@ -81,9 +81,7 @@ def plot_district_map(
 
 
 def select_daily_district(inference_results: pd.DataFrame, weekday_to_rank: dict) -> pd.DataFrame:
-    rank = weekday_to_rank.get(date.today().weekday())
-    if rank is None:
-        raise ValueError("select_daily_district should only run Monday through Friday")
+    rank = weekday_to_rank.get(date.today().weekday(), 1)
     return inference_results[inference_results["rank"] == rank]
 
 
