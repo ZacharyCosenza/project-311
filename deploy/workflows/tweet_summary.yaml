@@ -27,6 +27,8 @@ spec:
           env:
             - name: KEDRO_ENV
               value: "prod"
+            - name: HOME
+              value: "/tmp"
           envFrom:
             - secretRef:
                 name: twitter-credentials

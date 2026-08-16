@@ -119,18 +119,13 @@ kubectl get cronworkflows -n argo
 kubectl delete cronworkflow <old-name> -n argo
 ```
 
-⚠️ **Known drift as of this writing**: `deploy/workflows/` in this repo
-currently defines the *new* split architecture (`train`, `inference`,
-`tweet-summary`, `tweet-daily`), but the live cluster is still running the
-*old* two-CronWorkflow setup (`train`, `tweet`) — the new YAMLs were never
-committed/pushed or `kubectl apply`'d yet, and `deploy/workflows/tweet.yaml`
-(the old single-tweet workflow) hasn't been deleted from the cluster either.
-Until that's done, tweets are still going out via the old `tweet`
-CronWorkflow's `kedro run --pipeline tweet` — which no longer exists in
-`pipeline_registry.py`, so treat any tweet run as fragile until this is
-resolved. Fixing this is: push the current branch, then on the desktop
-`kubectl apply -f deploy/workflows/` followed by
-`kubectl delete cronworkflow tweet -n argo`.
+The split architecture (`train`, `inference`, `tweet-summary`, `tweet-daily`)
+has since been applied to the live cluster — a `train` pod run with the new
+`securityContext.runAsUser: 1000` is what surfaced the Java/Ivy incident
+documented under "Known gotchas" below, which only exists in the new YAML.
+Worth a quick `kubectl get cronworkflows -n argo` to confirm the old `tweet`
+CronWorkflow is actually gone next time you're in — it should have been
+deleted as part of that rollout.
 
 ## CI/CD
 
@@ -166,8 +161,13 @@ deploy/
 ```
 
 All CronWorkflows: `concurrencyPolicy: Forbid` (skip if a run's still going),
-`imagePullPolicy: Always`, `KEDRO_ENV=prod`, `serviceAccountName: argo`, same
-`hostPath` volume mount. The two tweet workflows additionally pull
+`imagePullPolicy: Always`, `serviceAccountName: argo`, `securityContext:
+{runAsUser: 1000, runAsGroup: 1000}` (matches `cosenzac` on the desktop, so
+pod-written files under the `hostPath` mount aren't `root`-owned), same
+`hostPath` volume mount, and `env: [KEDRO_ENV, HOME]` set directly in each
+workflow's own YAML (each file is self-contained — no shared ConfigMap; that
+was tried and deliberately dropped in favor of keeping each workflow's full
+config visible in its own file). The two tweet workflows additionally pull
 `envFrom: secretRef: twitter-credentials`.
 
 `inference` → `tweet_summary`/`tweet_daily` is a real dependency (both tweet
@@ -175,6 +175,14 @@ pipelines just read `inference_results.parquet`, never recompute) enforced
 purely by schedule ordering, not a k8s-level `depends_on` — if `inference`
 runs long or fails, the tweet jobs will read Monday's *previous* run's
 artifact rather than blocking. Worth knowing if a tweet ever looks stale.
+
+`HOME=/tmp` specifically exists to fix a real incident: the container image
+has no `/etc/passwd` entry for uid 1000 (the `runAsUser` this pod runs as),
+so without an explicit `HOME`, PySpark's `featurize_lags` step can't resolve
+a home directory for its Ivy dependency-resolver setup and the JVM dies with
+`[JAVA_GATEWAY_EXITED]` before Spark ever starts. See "Known gotchas" below.
+Since it's set per-file rather than shared, adding a new env var means
+editing all four `deploy/workflows/*.yaml` — deliberate tradeoff for now.
 
 ## RBAC
 
@@ -337,6 +345,7 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 | GHCR 403 / `ImagePullBackOff` | Package reverted to private — make it public again on `github.com/ZacharyCosenza?tab=packages` |
 | `argo-server` readiness probe failing after an auth-mode change | Probe scheme (`HTTPS`/`HTTP`) has to match `--secure=<bool>` on the container — they're set independently and don't auto-sync |
 | Manifest change in `deploy/` doesn't reach the cluster | There's no auto-sync (Argo CD isn't bootstrapped) — `kubectl apply -f deploy/workflows/` by hand on the desktop |
+| `[JAVA_GATEWAY_EXITED]` in `featurize_lags` | No `/etc/passwd` entry for `runAsUser: 1000` in the image → Java can't resolve `user.home` → Spark's Ivy setup crashes on an invalid path. Fixed by adding `HOME=/tmp` to `env:` in each `deploy/workflows/*.yaml` |
 
 ## Current state
 
@@ -345,6 +354,7 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 - [x] Artifacts written to `data/prod/02_reporting/` via `hostPath`
 - [x] `twitter-credentials` Secret created (plain `kubectl create secret`, not sealed)
 - [x] Argo Workflows UI exposed over Tailscale, no bearer token needed
-- [ ] **New `inference`/`tweet-summary`/`tweet-daily` CronWorkflows not yet applied to the cluster** — still running the old single `tweet` workflow, whose `--pipeline tweet` no longer exists in the codebase. See "Deploying changes" above.
+- [x] Split `inference`/`tweet-summary`/`tweet-daily` CronWorkflows applied to the cluster
+- [ ] `HOME=/tmp` (the fix for the Java/Ivy incident) added to each `deploy/workflows/*.yaml` but not yet `kubectl apply`'d to the cluster — next scheduled `train` run will still fail on `featurize_lags` until this ships
 - [ ] Argo CD not bootstrapped — all cluster changes are manual `kubectl apply`
 - [ ] `successfulJobsHistoryLimit`/`failedJobsHistoryLimit` unset on all CronWorkflows — old logs vanish once pods are GC'd
