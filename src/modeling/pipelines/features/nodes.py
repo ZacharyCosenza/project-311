@@ -4,18 +4,26 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
 
-def featurize_lags(target: pd.DataFrame, target_col: str) -> pd.DataFrame:
-    """Lag features and week-of-year via Spark window functions."""
+def featurize_lags(target: pd.DataFrame, target_col: str, max_lag_weeks: int, year_offset_weeks: int) -> pd.DataFrame:
+    """Recent lags (1..max_lag_weeks back) plus the same lags shifted back
+    year_offset_weeks (~1 calendar year) — "_ly" columns — so the model can separate a
+    recent trend from what this same time of year looked like last year, rather than
+    conflating the two. Week-of-year on top captures seasonality more broadly.
+    """
     spark = SparkSession.builder.appName("featurize-lags").master("local[*]").getOrCreate()
     try:
         w = Window.partitionBy("board_key").orderBy("week_start")
-        sdf = (
-            spark.createDataFrame(target)
-            .withColumn("ft_week_of_year", F.weekofyear("week_start"))
-            .withColumn("ft_lag_1", F.log1p(F.lag(target_col, 1).over(w)))
-            .withColumn("ft_lag_2", F.log1p(F.lag(target_col, 2).over(w)))
-            .select("board_key", "week_start", "ft_week_of_year", "ft_lag_1", "ft_lag_2")
-        )
+        sdf = spark.createDataFrame(target).withColumn("ft_week_of_year", F.weekofyear("week_start"))
+
+        recent_cols = [f"ft_lag_{lag}" for lag in range(1, max_lag_weeks + 1)]
+        for lag, col in zip(range(1, max_lag_weeks + 1), recent_cols):
+            sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, lag).over(w)))
+
+        ly_cols = [f"ft_lag_{lag}_ly" for lag in range(1, max_lag_weeks + 1)]
+        for lag, col in zip(range(1, max_lag_weeks + 1), ly_cols):
+            sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, year_offset_weeks + lag).over(w)))
+
+        sdf = sdf.select("board_key", "week_start", "ft_week_of_year", *recent_cols, *ly_cols)
         return sdf.toPandas()
     finally:
         spark.stop()
@@ -53,8 +61,12 @@ def join_features(
         .merge(weather_features, on="week_start", how="left")
     )
     df["ft_event_count"] = df["ft_event_count"].fillna(0)
-    df = df.dropna(subset=["ft_lag_1", "ft_lag_2", "ft_lag1_temp_max", "ft_pred_temp_max"])
     df = df.sort_values(["board_key", "week_start"]).reset_index(drop=True)
     df[numeric_features] = df[numeric_features].astype(float)
     df["ft_board_key"] = df["board_key"].astype("category")
     return df
+
+
+def drop_incomplete_rows(features: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
+    lag_cols = [c for c in feature_cols if c.startswith("ft_lag_")]
+    return features.dropna(subset=[*lag_cols, "ft_lag1_temp_max", "ft_pred_temp_max"]).reset_index(drop=True)

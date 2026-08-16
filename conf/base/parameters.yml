@@ -40,10 +40,23 @@ target_col: "tgt_calls"
 split_col: "split"
 stratify_col: "week_start"
 
+max_lag_weeks: 6
+year_offset_weeks: 52  # for the "_ly" (last-year) lags — separates recent trend from same-time-last-year
+
 feature_cols:
   - "ft_week_of_year"
   - "ft_lag_1"
   - "ft_lag_2"
+  - "ft_lag_3"
+  - "ft_lag_4"
+  - "ft_lag_5"
+  - "ft_lag_6"
+  - "ft_lag_1_ly"
+  - "ft_lag_2_ly"
+  - "ft_lag_3_ly"
+  - "ft_lag_4_ly"
+  - "ft_lag_5_ly"
+  - "ft_lag_6_ly"
   - "ft_event_count"
   - "ft_lag1_temp_max"
   - "ft_lag1_temp_min"
@@ -67,7 +80,6 @@ mlflow_model_name: "311-modeling"
 raw_fetch_retries: 3
 raw_fetch_backoff_seconds: 5.0
 
-# Inference / tweet pipelines
 lookback_weeks: 3
 top_k: 5
 top_reasons: 3
@@ -96,6 +108,16 @@ weekday_to_rank:
 reason_map:
   ft_lag_1: "recent historical patterns"
   ft_lag_2: "recent historical patterns"
+  ft_lag_3: "recent historical patterns"
+  ft_lag_4: "recent historical patterns"
+  ft_lag_5: "recent historical patterns"
+  ft_lag_6: "recent historical patterns"
+  ft_lag_1_ly: "patterns from this time last year"
+  ft_lag_2_ly: "patterns from this time last year"
+  ft_lag_3_ly: "patterns from this time last year"
+  ft_lag_4_ly: "patterns from this time last year"
+  ft_lag_5_ly: "patterns from this time last year"
+  ft_lag_6_ly: "patterns from this time last year"
   ft_week_of_year: "seasonal timing"
   ft_event_count: "scheduled local events"
   ft_lag1_temp_max: "recent warm weather"

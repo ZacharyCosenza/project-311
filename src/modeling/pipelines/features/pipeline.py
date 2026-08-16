@@ -1,13 +1,13 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import featurize_events, featurize_lags, featurize_weather, join_features
+from .nodes import drop_incomplete_rows, featurize_events, featurize_lags, featurize_weather, join_features
 
 
 def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
             func=featurize_lags,
-            inputs=["target", "params:target_col"],
+            inputs=["target", "params:target_col", "params:max_lag_weeks", "params:year_offset_weeks"],
             outputs="lag_features",
             name="featurize_lags",
         ),
@@ -29,7 +29,13 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "target", "lag_features", "event_features", "weather_features",
                 "params:feature_cols", "params:categorical_features",
             ],
-            outputs="features",
+            outputs="joined_features",
             name="join_features",
+        ),
+        node(
+            func=drop_incomplete_rows,
+            inputs=["joined_features", "params:feature_cols"],
+            outputs="features",
+            name="drop_incomplete_rows",
         ),
     ])

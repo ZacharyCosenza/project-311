@@ -1,4 +1,3 @@
-# Raw layer — API fetch outputs
 calls_weekly:
   type: pandas.ParquetDataset
   filepath: data/dev/00_raw/calls_weekly.parquet
@@ -15,7 +14,6 @@ weather_pred:
   type: pandas.ParquetDataset
   filepath: data/dev/00_raw/weather_pred.parquet
 
-# Processed layer — target + feature engineering outputs
 target:
   type: pandas.ParquetDataset
   filepath: data/dev/01_processed/target.parquet
@@ -36,7 +34,6 @@ features:
   type: pandas.ParquetDataset
   filepath: data/dev/01_processed/features.parquet
 
-# Reporting layer — model artifacts and evaluation
 model:
   type: pickle.PickleDataset
   filepath: data/dev/02_reporting/model.pkl

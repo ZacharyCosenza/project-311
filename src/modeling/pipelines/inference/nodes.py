@@ -9,11 +9,13 @@ from modeling.pipelines.modeling.nodes import inference
 
 
 def compute_predict_window(lookback_weeks: int) -> tuple[str, str, str]:
-    """Narrow rolling window: enough history for lag_1/lag_2 plus the current week.
+    """Narrow rolling window covering the current week, freshly fetched.
 
     Calls can only ever be fetched through today (next week hasn't happened yet), but
     events/weather need a separately *extended* end date reaching into next week —
     scheduled events and forecast weather for next week are legitimately knowable now.
+    Deeper lag history (beyond this narrow window) comes from modeling_data instead —
+    see build_next_week_features.
     """
     today = date.today()
     end_date = today.isoformat()
@@ -25,27 +27,36 @@ def compute_predict_window(lookback_weeks: int) -> tuple[str, str, str]:
 
 def build_next_week_features(
     features: pd.DataFrame, event_features: pd.DataFrame, weather_features: pd.DataFrame,
-    modeling_data: pd.DataFrame, target_col: str,
+    modeling_data: pd.DataFrame, target_col: str, max_lag_weeks: int, year_offset_weeks: int,
 ) -> pd.DataFrame:
-    """Shift the current (most recent) week's row one week forward.
-
-    The model learned a calendar-agnostic mapping: lag_1 (last week's calls), lag_2 (two
-    weeks back), events scheduled for the target week, and the weather forecast for the
-    target week -> that week's actual calls. To predict *next* week we construct exactly
-    that: lag_1 becomes this week's own calls, lag_2 becomes this week's former lag_1,
-    and event/weather features are freshly joined at the real next-week date rather than
-    reused from this week's row.
+    """Look up each lag feature directly from historical call counts — the "_ly"
+    (last-year) lags in particular reach back further than this narrow inference fetch
+    covers. Recent weeks come from the freshly fetched `features` (more current than
+    modeling_data might be); anything further back falls back to modeling_data, which
+    spans years. A lookup with no match (e.g. before a board's earliest history) comes
+    back NaN — left as-is, matching training: XGBoost handles missing values natively.
     """
     current_week = features[features["week_start"] == features["week_start"].max()].copy()
     next_week_start = current_week["week_start"].iloc[0] + timedelta(weeks=1)
+    boards = current_week["board_key"].to_numpy()
 
-    next_week = pd.DataFrame({
-        "board_key": current_week["board_key"].to_numpy(),
-        "week_start": next_week_start,
-        "ft_week_of_year": pd.Timestamp(next_week_start).isocalendar().week,
-        "ft_lag_1": np.log1p(current_week[target_col].to_numpy()),
-        "ft_lag_2": current_week["ft_lag_1"].to_numpy(),
-    })
+    history = (
+        pd.concat([modeling_data[["board_key", "week_start", target_col]], features[["board_key", "week_start", target_col]]])
+        .drop_duplicates(subset=["board_key", "week_start"], keep="last")
+        .set_index(["board_key", "week_start"])[target_col]
+    )
+
+    def lag_lookup(weeks_back: int) -> np.ndarray:
+        keys = list(zip(boards, [next_week_start - timedelta(weeks=weeks_back)] * len(boards)))
+        return np.log1p(history.reindex(keys).to_numpy())
+
+    next_week = pd.DataFrame({"board_key": boards, "week_start": next_week_start})
+    next_week["ft_week_of_year"] = pd.Timestamp(next_week_start).isocalendar().week
+    for lag in range(1, max_lag_weeks + 1):
+        next_week[f"ft_lag_{lag}"] = lag_lookup(lag)
+    for lag in range(1, max_lag_weeks + 1):
+        next_week[f"ft_lag_{lag}_ly"] = lag_lookup(year_offset_weeks + lag)
+
     # Category set must match what the model was trained on, not just whatever boards
     # happen to appear in this narrow window — a board with no recent calls would
     # otherwise be silently dropped from the categories, shifting XGBoost's categorical

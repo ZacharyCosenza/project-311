@@ -199,7 +199,9 @@ def plot_feature_histograms(
     categorical_mask = [f in categorical_features for f in feature_cols]
     train_df = modeling_data[modeling_data[split_col] == "train"]
 
-    fig, axes = plt.subplots(3, 4, figsize=(18, 12))
+    ncols = 4
+    nrows = -(-len(numeric_features) // ncols)  # ceil division
+    fig, axes = plt.subplots(nrows, ncols, figsize=(18, 4.5 * nrows))
     for ax, col in zip(axes.flat, numeric_features):
         ax.hist(train_df[col], bins=30, color="#93c5fd", alpha=0.7)
         ax.set_title(col, fontsize=9)
@@ -209,6 +211,8 @@ def plot_feature_histograms(
         ax2 = ax.twinx()
         ax2.plot(pdp["grid_values"][0], pdp["average"][0], color="tomato", linewidth=2)
         ax2.set_yticks([])
+    for ax in axes.flat[len(numeric_features):]:
+        ax.axis("off")
     plt.tight_layout()
 
     out = Path(report_dir) / "feature_histograms.png"
@@ -226,13 +230,17 @@ def plot_feature_timeseries(
     numeric_features = [f for f in feature_cols if f not in categorical_features]
     weekly = modeling_data.groupby("week_start")[numeric_features].agg(["mean", "std"])
 
-    fig, axes = plt.subplots(3, 4, figsize=(18, 12))
+    ncols = 4
+    nrows = -(-len(numeric_features) // ncols)  # ceil division
+    fig, axes = plt.subplots(nrows, ncols, figsize=(18, 4.5 * nrows))
     for ax, col in zip(axes.flat, numeric_features):
         mean, std = weekly[(col, "mean")], weekly[(col, "std")]
         ax.plot(mean.index, mean.values, color="#2563eb", linewidth=1.5)
         ax.fill_between(mean.index, mean.values - std.values, mean.values + std.values, color="#93c5fd", alpha=0.4)
         ax.set_title(col, fontsize=9)
         ax.tick_params(axis="x", rotation=45, labelsize=6)
+    for ax in axes.flat[len(numeric_features):]:
+        ax.axis("off")
     plt.tight_layout()
 
     out = Path(report_dir) / "feature_timeseries.png"

@@ -54,7 +54,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         ),
         node(
             func=featurize_lags,
-            inputs=["inference_target", "params:target_col"],
+            inputs=["inference_target", "params:target_col", "params:max_lag_weeks", "params:year_offset_weeks"],
             outputs="inference_lag_features",
             name="inference_featurize_lags",
         ),
@@ -83,7 +83,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             func=build_next_week_features,
             inputs=[
                 "inference_features", "inference_event_features", "inference_weather_features",
-                "modeling_data", "params:target_col",
+                "modeling_data", "params:target_col", "params:max_lag_weeks", "params:year_offset_weeks",
             ],
             outputs="inference_next_week_features",
             name="build_next_week_features",
