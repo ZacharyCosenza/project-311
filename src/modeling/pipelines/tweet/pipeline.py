@@ -33,7 +33,7 @@ def create_summary_pipeline(**kwargs) -> Pipeline:
             func=log_tweet_to_mlflow,
             inputs=[
                 "tweet_summary_text", "district_map_path",
-                "params:mlflow_tracking_uri", "params:mlflow_tweet_experiment",
+                "params:mlflow_tracking_uri", "params:mlflow_tweet_experiment", "params:report_dir",
             ],
             outputs=None,
             name="log_summary_to_mlflow",
@@ -71,7 +71,7 @@ def create_daily_pipeline(**kwargs) -> Pipeline:
             func=log_tweet_to_mlflow,
             inputs=[
                 "tweet_daily_text", "daily_trend_path",
-                "params:mlflow_tracking_uri", "params:mlflow_tweet_daily_experiment",
+                "params:mlflow_tracking_uri", "params:mlflow_tweet_daily_experiment", "params:report_dir",
             ],
             outputs=None,
             name="log_daily_to_mlflow",

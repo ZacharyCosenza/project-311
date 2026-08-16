@@ -168,12 +168,13 @@ def log_to_mlflow(
     }
 
     mlflow.set_tracking_uri(mlflow_tracking_uri)
+    if mlflow.get_experiment_by_name(mlflow_experiment) is None:
+        mlflow.create_experiment(mlflow_experiment, artifact_location=str(Path(report_dir) / "mlruns"))
     mlflow.set_experiment(mlflow_experiment)
     with mlflow.start_run():
         mlflow.log_metrics(all_metrics)
         mlflow.log_params(model_params)
 
-        # MLflow's own artifact store defaults to a path relative to the process's cwd
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         artifact_dir = Path(report_dir) / "mlartifacts"
         artifact_dir.mkdir(parents=True, exist_ok=True)

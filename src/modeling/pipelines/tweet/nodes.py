@@ -130,8 +130,12 @@ def plot_daily_trend(
     return str(out)
 
 
-def log_tweet_to_mlflow(tweet_text: str, image_path: str, mlflow_tracking_uri: str, mlflow_experiment: str) -> None:
+def log_tweet_to_mlflow(
+    tweet_text: str, image_path: str, mlflow_tracking_uri: str, mlflow_experiment: str, report_dir: str,
+) -> None:
     mlflow.set_tracking_uri(mlflow_tracking_uri)
+    if mlflow.get_experiment_by_name(mlflow_experiment) is None:
+        mlflow.create_experiment(mlflow_experiment, artifact_location=str(Path(report_dir) / "mlruns"))
     mlflow.set_experiment(mlflow_experiment)
     with mlflow.start_run():
         mlflow.log_text(tweet_text, "tweet.txt")
