@@ -27,8 +27,6 @@ spec:
           env:
             - name: KEDRO_ENV
               value: "prod"
-            - name: HOME
-              value: "/tmp"
           volumeMounts:
             - name: data
               mountPath: /app/data

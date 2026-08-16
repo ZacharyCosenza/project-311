@@ -11,4 +11,10 @@ COPY src/ src/
 COPY conf/ conf/
 RUN pip install --no-cache-dir -e .
 
+# uid 1000 matches cosenzac on the desktop (see deploy/workflows/*.yaml
+# securityContext.runAsUser) — needs a real passwd entry + home dir, or
+# PySpark's JVM can't resolve a username/home and fails to start at all.
+RUN useradd -u 1000 -m -s /bin/bash appuser
+USER appuser
+
 CMD ["kedro", "run"]

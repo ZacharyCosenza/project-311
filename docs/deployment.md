@@ -164,7 +164,7 @@ All CronWorkflows: `concurrencyPolicy: Forbid` (skip if a run's still going),
 `imagePullPolicy: Always`, `serviceAccountName: argo`, `securityContext:
 {runAsUser: 1000, runAsGroup: 1000}` (matches `cosenzac` on the desktop, so
 pod-written files under the `hostPath` mount aren't `root`-owned), same
-`hostPath` volume mount, and `env: [KEDRO_ENV, HOME]` set directly in each
+`hostPath` volume mount, and `env: [KEDRO_ENV]` set directly in each
 workflow's own YAML (each file is self-contained — no shared ConfigMap; that
 was tried and deliberately dropped in favor of keeping each workflow's full
 config visible in its own file). The two tweet workflows additionally pull
@@ -175,14 +175,6 @@ pipelines just read `inference_results.parquet`, never recompute) enforced
 purely by schedule ordering, not a k8s-level `depends_on` — if `inference`
 runs long or fails, the tweet jobs will read Monday's *previous* run's
 artifact rather than blocking. Worth knowing if a tweet ever looks stale.
-
-`HOME=/tmp` specifically exists to fix a real incident: the container image
-has no `/etc/passwd` entry for uid 1000 (the `runAsUser` this pod runs as),
-so without an explicit `HOME`, PySpark's `featurize_lags` step can't resolve
-a home directory for its Ivy dependency-resolver setup and the JVM dies with
-`[JAVA_GATEWAY_EXITED]` before Spark ever starts. See "Known gotchas" below.
-Since it's set per-file rather than shared, adding a new env var means
-editing all four `deploy/workflows/*.yaml` — deliberate tradeoff for now.
 
 ## RBAC
 
@@ -345,7 +337,7 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 | GHCR 403 / `ImagePullBackOff` | Package reverted to private — make it public again on `github.com/ZacharyCosenza?tab=packages` |
 | `argo-server` readiness probe failing after an auth-mode change | Probe scheme (`HTTPS`/`HTTP`) has to match `--secure=<bool>` on the container — they're set independently and don't auto-sync |
 | Manifest change in `deploy/` doesn't reach the cluster | There's no auto-sync (Argo CD isn't bootstrapped) — `kubectl apply -f deploy/workflows/` by hand on the desktop |
-| `[JAVA_GATEWAY_EXITED]` in `featurize_lags` | No `/etc/passwd` entry for `runAsUser: 1000` in the image → Java can't resolve `user.home` → Spark's Ivy setup crashes on an invalid path. Fixed by adding `HOME=/tmp` to `env:` in each `deploy/workflows/*.yaml` |
+| `[JAVA_GATEWAY_EXITED]` in `featurize_lags` | No `/etc/passwd` entry for `runAsUser: 1000` in the image → Java can't resolve a username/home dir → JVM dies before Spark starts. **`HOME=/tmp` does NOT fix this** — this JDK's `user.home` lookup ignores the env var entirely, and even forcing it via `-Duser.home` just trades this crash for a second one (`Invalid UID, could not determine effective user` — Hadoop's `UserGroupInformation` needs a resolvable *username*, no override exists). The only real fix: give uid 1000 an actual passwd entry — `RUN useradd -u 1000 -m -s /bin/bash appuser` + `USER appuser` in the Dockerfile. Confirmed by running the actual crashing code (`featurize_lags`) locally under both approaches before shipping either. |
 
 ## Current state
 
@@ -355,6 +347,6 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 - [x] `twitter-credentials` Secret created (plain `kubectl create secret`, not sealed)
 - [x] Argo Workflows UI exposed over Tailscale, no bearer token needed
 - [x] Split `inference`/`tweet-summary`/`tweet-daily` CronWorkflows applied to the cluster
-- [ ] `HOME=/tmp` (the fix for the Java/Ivy incident) added to each `deploy/workflows/*.yaml` but not yet `kubectl apply`'d to the cluster — next scheduled `train` run will still fail on `featurize_lags` until this ships
+- [ ] Dockerfile now creates a real uid-1000 user (fix for the Java/Ivy incident, see "Known gotchas"), but not yet built/pushed/pulled — next scheduled `train` run will still fail on `featurize_lags` until a new image ships (`git push` → CD rebuilds `:latest` → next run pulls it, `imagePullPolicy: Always`)
 - [ ] Argo CD not bootstrapped — all cluster changes are manual `kubectl apply`
 - [ ] `successfulJobsHistoryLimit`/`failedJobsHistoryLimit` unset on all CronWorkflows — old logs vanish once pods are GC'd
