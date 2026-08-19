@@ -1,39 +1,7 @@
-calls_weekly:
-  type: pandas.ParquetDataset
-  filepath: data/dev/00_raw/calls_weekly.parquet
-
-events_weekly:
-  type: pandas.ParquetDataset
-  filepath: data/dev/00_raw/events_weekly.parquet
-
-weather_lag1:
-  type: pandas.ParquetDataset
-  filepath: data/dev/00_raw/weather_lag1.parquet
-
-weather_pred:
-  type: pandas.ParquetDataset
-  filepath: data/dev/00_raw/weather_pred.parquet
-
-target:
-  type: pandas.ParquetDataset
-  filepath: data/dev/01_processed/target.parquet
-
-lag_features:
-  type: pandas.ParquetDataset
-  filepath: data/dev/01_processed/lag_features.parquet
-
-event_features:
-  type: pandas.ParquetDataset
-  filepath: data/dev/01_processed/event_features.parquet
-
-weather_features:
-  type: pandas.ParquetDataset
-  filepath: data/dev/01_processed/weather_features.parquet
-
-features:
-  type: pandas.ParquetDataset
-  filepath: data/dev/01_processed/features.parquet
-
+# model/modeling_data/metrics are no longer written by any pipeline (the single-target
+# raw/target/features/modeling chain was fully replaced by multihead — see
+# catalog entries below) but stay declared and on disk: inference still reads model +
+# modeling_data directly, until it's updated to consume the multihead artifacts instead.
 model:
   type: pickle.PickleDataset
   filepath: data/dev/02_reporting/model.pkl
