@@ -1,10 +1,6 @@
-# model/modeling_data/metrics are no longer written by any pipeline (the single-target
-# raw/target/features/modeling chain was fully replaced by multihead — see
-# catalog entries below) but stay declared and on disk: inference still reads model +
-# modeling_data directly, until it's updated to consume the multihead artifacts instead.
-model:
+models:
   type: pickle.PickleDataset
-  filepath: data/dev/02_reporting/model.pkl
+  filepath: data/dev/02_reporting/models.pkl
 
 modeling_data:
   type: pandas.ParquetDataset
@@ -27,18 +23,3 @@ tweet_summary_text:
 tweet_daily_text:
   type: text.TextDataset
   filepath: data/dev/02_reporting/tweet_daily.txt
-
-# multihead pipeline — intermediate raw/feature datasets left undeclared (in-memory
-# only) for the same reason as above; only the trained artifacts are persisted.
-multihead_models:
-  type: pickle.PickleDataset
-  filepath: data/dev/02_reporting/multihead/models.pkl
-
-multihead_modeling_data:
-  type: pandas.ParquetDataset
-  filepath: data/dev/02_reporting/multihead/modeling_data.parquet
-
-multihead_metrics:
-  type: pandas.CSVDataset
-  filepath: data/dev/02_reporting/multihead/metrics.csv
-

@@ -79,7 +79,7 @@ def fetch_calls_weekly_by_group(
     request's result set as small as the existing single-total fetch. Adding
     complaint_type as a group-by dimension instead (one combined query, board x week x
     type) was tried first and inflates the result set by ~30x, too slow for one request.
-    The "other" bucket isn't fetched here — build_multi_target derives it by
+    The "other" bucket isn't fetched here — build_grouped_target derives it by
     subtracting these group totals from the unfiltered fetch_calls_weekly total.
     """
     frames = []

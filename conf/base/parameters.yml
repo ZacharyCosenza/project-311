@@ -43,34 +43,6 @@ stratify_col: "week_start"
 max_lag_weeks: 6
 year_offset_weeks: 52  # for the "_ly" (last-year) lags — separates recent trend from same-time-last-year
 
-feature_cols:
-  - "ft_week_of_year"
-  - "ft_lag_1"
-  - "ft_lag_2"
-  - "ft_lag_3"
-  - "ft_lag_4"
-  - "ft_lag_5"
-  - "ft_lag_6"
-  - "ft_lag_1_ly"
-  - "ft_lag_2_ly"
-  - "ft_lag_3_ly"
-  - "ft_lag_4_ly"
-  - "ft_lag_5_ly"
-  - "ft_lag_6_ly"
-  - "ft_event_count"
-  - "ft_lag1_temp_max"
-  - "ft_lag1_temp_min"
-  - "ft_lag1_had_rain"
-  - "ft_lag1_had_snow"
-  - "ft_pred_temp_max"
-  - "ft_pred_temp_min"
-  - "ft_pred_had_rain"
-  - "ft_pred_had_snow"
-  - "ft_board_key"
-
-categorical_features:
-  - "ft_board_key"
-
 raw_dir: "data/dev/00_raw"
 report_dir: "data/dev/02_reporting"
 mlflow_tracking_uri: "sqlite:///data/dev/02_reporting/mlflow.db"
@@ -152,7 +124,7 @@ complaint_type_groups:
     - "Homeless Person Assistance"
   pests_health:
     - "Rodent"
-# anything not listed above falls into the residual "other" head — see build_multi_target
+# anything not listed above falls into the residual "other" group — see build_grouped_target
 
 shared_feature_cols:
   - "ft_week_of_year"
@@ -169,10 +141,6 @@ shared_feature_cols:
 
 shared_categorical_features:
   - "ft_board_key"
-
-mlflow_multihead_experiment: "311-multihead"
-mlflow_multihead_model_name: "311-multihead"
-multihead_report_dir: "data/dev/02_reporting/multihead"
 
 reason_map:
   ft_lag_1: "recent historical patterns"

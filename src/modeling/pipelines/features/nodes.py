@@ -5,9 +5,10 @@ from pyspark.sql import functions as F
 
 
 def _add_lag_columns(sdf, w: Window, target_col: str, max_lag_weeks: int, year_offset_weeks: int, suffix: str = ""):
-    """Shared by featurize_lags and featurize_multi_lags — suffix namespaces the output
-    columns (e.g. "_noise") so the same logic can run once per target column without
-    collisions; empty by default, matching featurize_lags's own column names exactly.
+    """Shared by featurize_lags and featurize_grouped_lags — suffix namespaces the
+    output columns (e.g. "_noise") so the same logic can run once per target column
+    without collisions; empty by default, matching featurize_lags's own column names
+    exactly.
     """
     recent_cols = [f"ft_lag_{lag}{suffix}" for lag in range(1, max_lag_weeks + 1)]
     for lag, col in zip(range(1, max_lag_weeks + 1), recent_cols):
@@ -37,22 +38,22 @@ def featurize_lags(target: pd.DataFrame, target_col: str, max_lag_weeks: int, ye
         spark.stop()
 
 
-def featurize_multi_lags(
-    multi_target: pd.DataFrame, complaint_type_groups: dict, max_lag_weeks: int, year_offset_weeks: int,
+def featurize_grouped_lags(
+    target: pd.DataFrame, complaint_type_groups: dict, max_lag_weeks: int, year_offset_weeks: int,
 ) -> pd.DataFrame:
-    """Same lag logic as featurize_lags, run once per target head (each
-    complaint_type_groups key, plus "other") in a single shared Spark session — calling
-    featurize_lags itself in a loop would restart the JVM once per head.
+    """Same lag logic as featurize_lags, run once per group (each complaint_type_groups
+    key, plus "other") in a single shared Spark session — calling featurize_lags itself
+    in a loop would restart the JVM once per group.
     """
-    spark = SparkSession.builder.appName("featurize-multi-lags").master("local[*]").getOrCreate()
+    spark = SparkSession.builder.appName("featurize-grouped-lags").master("local[*]").getOrCreate()
     try:
         w = Window.partitionBy("board_key").orderBy("week_start")
-        sdf = spark.createDataFrame(multi_target).withColumn("ft_week_of_year", F.weekofyear("week_start"))
+        sdf = spark.createDataFrame(target).withColumn("ft_week_of_year", F.weekofyear("week_start"))
 
         all_lag_cols = []
-        for head in [*complaint_type_groups.keys(), "other"]:
+        for group in [*complaint_type_groups.keys(), "other"]:
             sdf, lag_cols = _add_lag_columns(
-                sdf, w, f"tgt_{head}", max_lag_weeks, year_offset_weeks, suffix=f"_{head}",
+                sdf, w, f"tgt_{group}", max_lag_weeks, year_offset_weeks, suffix=f"_{group}",
             )
             all_lag_cols.extend(lag_cols)
 
@@ -60,6 +61,17 @@ def featurize_multi_lags(
         return sdf.toPandas()
     finally:
         spark.stop()
+
+
+def group_feature_cols(group: str, shared_feature_cols: list, max_lag_weeks: int) -> list:
+    """The feature list one group's model trains/predicts on: its own lag columns
+    (named by featurize_grouped_lags) plus the exogenous columns every group shares.
+    Shared by the train and inference pipelines so the naming convention has one
+    definition, not two that could drift apart.
+    """
+    lag_cols = [f"ft_lag_{lag}_{group}" for lag in range(1, max_lag_weeks + 1)]
+    lag_cols += [f"ft_lag_{lag}_ly_{group}" for lag in range(1, max_lag_weeks + 1)]
+    return [*lag_cols, *shared_feature_cols]
 
 
 def featurize_events(events: pd.DataFrame) -> pd.DataFrame:
@@ -97,6 +109,30 @@ def join_features(
     df = df.sort_values(["board_key", "week_start"]).reset_index(drop=True)
     df[numeric_features] = df[numeric_features].astype(float)
     df["ft_board_key"] = df["board_key"].astype("category")
+    return df
+
+
+def join_grouped_features(
+    target: pd.DataFrame, lag_features: pd.DataFrame,
+    event_features: pd.DataFrame, weather_features: pd.DataFrame,
+) -> pd.DataFrame:
+    """Same join as join_features, but the column set is group-driven (one set of lag
+    columns per complaint_type_groups key) rather than a fixed feature_cols list, so
+    numeric/categorical casting goes by naming convention instead: every ft_ column is
+    numeric except ft_board_key, the one categorical. Shared by the train and
+    inference pipelines.
+    """
+    df = (
+        target
+        .merge(lag_features, on=["board_key", "week_start"], how="left")
+        .merge(event_features, on=["board_key", "week_start"], how="left")
+        .merge(weather_features, on="week_start", how="left")
+    )
+    df["ft_event_count"] = df["ft_event_count"].fillna(0)
+    df = df.sort_values(["board_key", "week_start"]).reset_index(drop=True)
+    df["ft_board_key"] = df["board_key"].astype("category")
+    numeric_cols = [c for c in df.columns if c.startswith("ft_") and c != "ft_board_key"]
+    df[numeric_cols] = df[numeric_cols].astype(float)
     return df
 
 
