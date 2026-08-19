@@ -294,6 +294,21 @@ argo logs <workflow-name> -n argo                 # stream/dump its logs
 argo delete --completed -n argo                   # clean up finished runs
 ```
 
+`argo submit --from cronworkflow/<name>` works for any of the four:
+`train`, `inference`, `tweet-daily`, `tweet-summary`. For the tweet ones,
+`argo logs <workflow-name> -n argo | grep publish_tweet` confirms an actual
+post (`[publish_tweet] posted: {...'id': ...}`) rather than the silent
+`no Twitter credentials set, not posting` fallback.
+
+**Manually triggering a tweet must go through `argo submit`, not a bare
+`kedro run --pipeline tweet_daily`/`tweet_summary` in a desktop shell.**
+Twitter credentials only exist as the in-cluster `twitter-credentials`
+Secret (see "Secrets" below) — a shell run has no access to them and will
+just print the "not posting" fallback instead of erroring, which is easy to
+mistake for a successful, intentional no-op. `tweet-daily` also carries
+the weekday-only guard from `select_daily_district` (see `pipelines.md`) —
+submitting it manually on a weekend still fails.
+
 ### Pods
 
 ```bash
@@ -338,6 +353,7 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 | `argo-server` readiness probe failing after an auth-mode change | Probe scheme (`HTTPS`/`HTTP`) has to match `--secure=<bool>` on the container — they're set independently and don't auto-sync |
 | Manifest change in `deploy/` doesn't reach the cluster | There's no auto-sync (Argo CD isn't bootstrapped) — `kubectl apply -f deploy/workflows/` by hand on the desktop |
 | `[JAVA_GATEWAY_EXITED]` in `featurize_lags` | No `/etc/passwd` entry for `runAsUser: 1000` in the image → Java can't resolve a username/home dir → JVM dies before Spark starts. **`HOME=/tmp` does NOT fix this** — this JDK's `user.home` lookup ignores the env var entirely, and even forcing it via `-Duser.home` just trades this crash for a second one (`Invalid UID, could not determine effective user` — Hadoop's `UserGroupInformation` needs a resolvable *username*, no override exists). The only real fix: give uid 1000 an actual passwd entry — `RUN useradd -u 1000 -m -s /bin/bash appuser` + `USER appuser` in the Dockerfile. Confirmed by running the actual crashing code (`featurize_lags`) locally under both approaches before shipping either. |
+| `PermissionError: '/app/mlruns'` in `log_to_mlflow` / `log_tweet_to_mlflow` | `mlflow.set_experiment()` on a brand-new experiment defaults its artifact store to `./mlruns` relative to cwd — ephemeral inside a pod, and not writable by a non-root user anyway. Was silently writing there (and getting garbage-collected on pod exit) for every prior run — running as root never complained, it just lost every model artifact on pod exit. Fixed in code: both functions now call `mlflow.create_experiment(name, artifact_location=report_dir/mlruns)` the first time an experiment is created. Doesn't retroactively fix an *existing* experiment (artifact_location is fixed at creation) — prod's `mlflow.db` needed a one-time direct `UPDATE experiments SET artifact_location = ...` for all four experiments (`Default`, `311-modeling`, `311-tweet`, `311-tweet-daily`). Dev's `mlflow.db` has the same stale pointers but was never actually broken (local runs are writable everywhere) — not patched. |
 
 ## Current state
 
@@ -347,6 +363,6 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 - [x] `twitter-credentials` Secret created (plain `kubectl create secret`, not sealed)
 - [x] Argo Workflows UI exposed over Tailscale, no bearer token needed
 - [x] Split `inference`/`tweet-summary`/`tweet-daily` CronWorkflows applied to the cluster
-- [ ] Dockerfile now creates a real uid-1000 user (fix for the Java/Ivy incident, see "Known gotchas"), but not yet built/pushed/pulled — next scheduled `train` run will still fail on `featurize_lags` until a new image ships (`git push` → CD rebuilds `:latest` → next run pulls it, `imagePullPolicy: Always`)
+- [x] Java/Ivy fix (real uid-1000 passwd entry in the Dockerfile) and mlflow artifact-location fix both pushed, CD built + pushed `:latest` successfully — next `train`/`tweet-*` run pulls it automatically (`imagePullPolicy: Always`)
 - [ ] Argo CD not bootstrapped — all cluster changes are manual `kubectl apply`
 - [ ] `successfulJobsHistoryLimit`/`failedJobsHistoryLimit` unset on all CronWorkflows — old logs vanish once pods are GC'd
