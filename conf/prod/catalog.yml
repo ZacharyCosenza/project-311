@@ -58,3 +58,15 @@ tweet_summary_text:
 tweet_daily_text:
   type: text.TextDataset
   filepath: data/prod/02_reporting/tweet_daily.txt
+
+multihead_models:
+  type: pickle.PickleDataset
+  filepath: data/prod/02_reporting/multihead/models.pkl
+
+multihead_modeling_data:
+  type: pandas.ParquetDataset
+  filepath: data/prod/02_reporting/multihead/modeling_data.parquet
+
+multihead_metrics:
+  type: pandas.CSVDataset
+  filepath: data/prod/02_reporting/multihead/metrics.csv

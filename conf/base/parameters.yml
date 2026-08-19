@@ -105,6 +105,75 @@ weekday_to_rank:
   3: 4
   4: 5
 
+complaint_type_groups:
+  noise:
+    - "Noise"
+    - "Noise - Residential"
+    - "Noise - Street/Sidewalk"
+    - "Noise - Commercial"
+    - "Noise - Vehicle"
+    - "Noise - Helicopter"
+  parking_vehicles:
+    - "Illegal Parking"
+    - "Blocked Driveway"
+    - "Abandoned Vehicle"
+    - "Derelict Vehicles"
+  heat_hot_water:
+    - "HEAT/HOT WATER"
+  housing_conditions:
+    - "UNSANITARY CONDITION"
+    - "PLUMBING"
+    - "PAINT/PLASTER"
+    - "DOOR/WINDOW"
+    - "WATER LEAK"
+    - "FLOORING/STAIRS"
+    - "ELECTRIC"
+    - "APPLIANCE"
+    - "General Construction/Plumbing"
+    - "Building/Use"
+  streets_traffic:
+    - "Street Condition"
+    - "Traffic Signal Condition"
+    - "Street Light Condition"
+    - "Sidewalk Condition"
+  sanitation_trash:
+    - "Dirty Condition"
+    - "Missed Collection"
+    - "Illegal Dumping"
+    - "Request Large Bulky Item Collection"
+  water_sewer:
+    - "Water System"
+    - "Sewer"
+  parks_trees:
+    - "Damaged Tree"
+    - "Overgrown Tree/Branches"
+  homelessness:
+    - "Encampment"
+    - "Homeless Person Assistance"
+  pests_health:
+    - "Rodent"
+# anything not listed above falls into the residual "other" head — see build_multi_target
+
+shared_feature_cols:
+  - "ft_week_of_year"
+  - "ft_event_count"
+  - "ft_lag1_temp_max"
+  - "ft_lag1_temp_min"
+  - "ft_lag1_had_rain"
+  - "ft_lag1_had_snow"
+  - "ft_pred_temp_max"
+  - "ft_pred_temp_min"
+  - "ft_pred_had_rain"
+  - "ft_pred_had_snow"
+  - "ft_board_key"
+
+shared_categorical_features:
+  - "ft_board_key"
+
+mlflow_multihead_experiment: "311-multihead"
+mlflow_multihead_model_name: "311-multihead"
+multihead_report_dir: "data/dev/02_reporting/multihead"
+
 reason_map:
   ft_lag_1: "recent historical patterns"
   ft_lag_2: "recent historical patterns"

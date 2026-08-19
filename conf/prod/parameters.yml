@@ -1,3 +1,4 @@
 raw_dir: "data/prod/00_raw"
 report_dir: "data/prod/02_reporting"
 mlflow_tracking_uri: "sqlite:///data/prod/02_reporting/mlflow.db"
+multihead_report_dir: "data/prod/02_reporting/multihead"

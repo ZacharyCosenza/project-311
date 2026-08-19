@@ -60,3 +60,17 @@ tweet_daily_text:
   type: text.TextDataset
   filepath: data/dev/02_reporting/tweet_daily.txt
 
+# multihead pipeline — intermediate raw/feature datasets left undeclared (in-memory
+# only) for the same reason as above; only the trained artifacts are persisted.
+multihead_models:
+  type: pickle.PickleDataset
+  filepath: data/dev/02_reporting/multihead/models.pkl
+
+multihead_modeling_data:
+  type: pandas.ParquetDataset
+  filepath: data/dev/02_reporting/multihead/modeling_data.parquet
+
+multihead_metrics:
+  type: pandas.CSVDataset
+  filepath: data/dev/02_reporting/multihead/metrics.csv
+

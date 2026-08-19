@@ -157,6 +157,7 @@ def log_to_mlflow(
     mlflow_model_name: str,
     model_params: dict,
     report_dir: str,
+    extra_tags: dict | None = None,
 ) -> None:
     numeric_features = [f for f in feature_cols if f not in categorical_features]
     X_train = modeling_data[modeling_data[split_col] == "train"][feature_cols]
@@ -174,6 +175,8 @@ def log_to_mlflow(
     with mlflow.start_run():
         mlflow.log_metrics(all_metrics)
         mlflow.log_params(model_params)
+        if extra_tags:
+            mlflow.set_tags(extra_tags)
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         artifact_dir = Path(report_dir) / "mlartifacts"

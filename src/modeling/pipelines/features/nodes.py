@@ -4,6 +4,22 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
 
+def _add_lag_columns(sdf, w: Window, target_col: str, max_lag_weeks: int, year_offset_weeks: int, suffix: str = ""):
+    """Shared by featurize_lags and featurize_multi_lags — suffix namespaces the output
+    columns (e.g. "_noise") so the same logic can run once per target column without
+    collisions; empty by default, matching featurize_lags's own column names exactly.
+    """
+    recent_cols = [f"ft_lag_{lag}{suffix}" for lag in range(1, max_lag_weeks + 1)]
+    for lag, col in zip(range(1, max_lag_weeks + 1), recent_cols):
+        sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, lag).over(w)))
+
+    ly_cols = [f"ft_lag_{lag}_ly{suffix}" for lag in range(1, max_lag_weeks + 1)]
+    for lag, col in zip(range(1, max_lag_weeks + 1), ly_cols):
+        sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, year_offset_weeks + lag).over(w)))
+
+    return sdf, recent_cols + ly_cols
+
+
 def featurize_lags(target: pd.DataFrame, target_col: str, max_lag_weeks: int, year_offset_weeks: int) -> pd.DataFrame:
     """Recent lags (1..max_lag_weeks back) plus the same lags shifted back
     year_offset_weeks (~1 calendar year) — "_ly" columns — so the model can separate a
@@ -14,16 +30,33 @@ def featurize_lags(target: pd.DataFrame, target_col: str, max_lag_weeks: int, ye
     try:
         w = Window.partitionBy("board_key").orderBy("week_start")
         sdf = spark.createDataFrame(target).withColumn("ft_week_of_year", F.weekofyear("week_start"))
+        sdf, lag_cols = _add_lag_columns(sdf, w, target_col, max_lag_weeks, year_offset_weeks)
+        sdf = sdf.select("board_key", "week_start", "ft_week_of_year", *lag_cols)
+        return sdf.toPandas()
+    finally:
+        spark.stop()
 
-        recent_cols = [f"ft_lag_{lag}" for lag in range(1, max_lag_weeks + 1)]
-        for lag, col in zip(range(1, max_lag_weeks + 1), recent_cols):
-            sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, lag).over(w)))
 
-        ly_cols = [f"ft_lag_{lag}_ly" for lag in range(1, max_lag_weeks + 1)]
-        for lag, col in zip(range(1, max_lag_weeks + 1), ly_cols):
-            sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, year_offset_weeks + lag).over(w)))
+def featurize_multi_lags(
+    multi_target: pd.DataFrame, complaint_type_groups: dict, max_lag_weeks: int, year_offset_weeks: int,
+) -> pd.DataFrame:
+    """Same lag logic as featurize_lags, run once per target head (each
+    complaint_type_groups key, plus "other") in a single shared Spark session — calling
+    featurize_lags itself in a loop would restart the JVM once per head.
+    """
+    spark = SparkSession.builder.appName("featurize-multi-lags").master("local[*]").getOrCreate()
+    try:
+        w = Window.partitionBy("board_key").orderBy("week_start")
+        sdf = spark.createDataFrame(multi_target).withColumn("ft_week_of_year", F.weekofyear("week_start"))
 
-        sdf = sdf.select("board_key", "week_start", "ft_week_of_year", *recent_cols, *ly_cols)
+        all_lag_cols = []
+        for head in [*complaint_type_groups.keys(), "other"]:
+            sdf, lag_cols = _add_lag_columns(
+                sdf, w, f"tgt_{head}", max_lag_weeks, year_offset_weeks, suffix=f"_{head}",
+            )
+            all_lag_cols.extend(lag_cols)
+
+        sdf = sdf.select("board_key", "week_start", "ft_week_of_year", *all_lag_cols)
         return sdf.toPandas()
     finally:
         spark.stop()

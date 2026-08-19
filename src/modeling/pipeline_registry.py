@@ -3,6 +3,7 @@ from kedro.pipeline import Pipeline
 from modeling.pipelines.features.pipeline import create_pipeline as features_pipeline
 from modeling.pipelines.inference.pipeline import create_pipeline as inference_pipeline
 from modeling.pipelines.modeling.pipeline import create_pipeline as modeling_pipeline
+from modeling.pipelines.multihead.pipeline import create_pipeline as multihead_pipeline
 from modeling.pipelines.raw.pipeline import create_pipeline as raw_pipeline
 from modeling.pipelines.target.pipeline import create_pipeline as target_pipeline
 from modeling.pipelines.tweet.pipeline import create_daily_pipeline as tweet_daily_pipeline
@@ -17,6 +18,7 @@ def register_pipelines() -> dict[str, Pipeline]:
     inference = inference_pipeline()
     tweet_summary = tweet_summary_pipeline()
     tweet_daily = tweet_daily_pipeline()
+    multihead = multihead_pipeline()
     train = raw + target + features + modeling
 
     return {
@@ -28,4 +30,5 @@ def register_pipelines() -> dict[str, Pipeline]:
         "inference": inference,
         "tweet_summary": tweet_summary,
         "tweet_daily": tweet_daily,
+        "multihead": multihead,
     }
