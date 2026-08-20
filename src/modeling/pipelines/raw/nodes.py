@@ -20,10 +20,20 @@ def _iso_week_monday(yr: int, mo: int, woy: int) -> date:
 
 
 def _with_fallback(fetch, name: str, retries: int, backoff_seconds: float, *fallback_paths: str):
-    """Retry `fetch`, falling back to the last saved raw parquet(s) on repeated failure."""
+    """Retry `fetch`, caching every successful result to fallback_paths and falling
+    back to the last cached version on repeated failure. Caching happens here, not via
+    kedro's catalog, because raw fetch outputs are left as undeclared/in-memory kedro
+    datasets — this keeps the fallback resilience self-contained regardless of
+    whichever datasets happen to be declared in catalog.yml.
+    """
     for attempt in range(1, retries + 1):
         try:
-            return fetch()
+            result = fetch()
+            values = result if isinstance(result, tuple) else (result,)
+            for value, path in zip(values, fallback_paths):
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                value.to_parquet(path)
+            return result
         except Exception as e:
             print(f"[{name}] attempt {attempt}/{retries} failed: {e}", file=sys.stderr)
             if attempt < retries:
