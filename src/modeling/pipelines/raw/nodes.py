@@ -66,7 +66,11 @@ def fetch_calls_weekly(
         )
         r.raise_for_status()
 
-        df = pd.DataFrame(r.json()).dropna(subset=["community_board"])
+        rows = r.json()
+        if not rows:
+            return pd.DataFrame(columns=["board_key", "week_start", "calls"])
+
+        df = pd.DataFrame(rows).dropna(subset=["community_board"])
         df["yr"] = df["yr"].astype(int)
         df["mo"] = df["mo"].astype(int)
         df["woy"] = df["woy"].astype(int)
@@ -114,7 +118,16 @@ def fetch_calls_weekly_by_group(
             )
             r.raise_for_status()
 
-            df = pd.DataFrame(r.json()).dropna(subset=["community_board"])
+            rows = r.json()
+            if not rows:
+                # A genuinely empty result — plausible here (unlike the wide unfiltered
+                # fetch) since a single group's narrow date range can have zero matches,
+                # not a fetch failure. pd.DataFrame([]) has no columns at all, so the
+                # dropna/astype calls below would raise on a missing column rather than
+                # correctly treating "zero rows" as a valid result.
+                return pd.DataFrame(columns=["board_key", "week_start", "calls"])
+
+            df = pd.DataFrame(rows).dropna(subset=["community_board"])
             df["yr"] = df["yr"].astype(int)
             df["mo"] = df["mo"].astype(int)
             df["woy"] = df["woy"].astype(int)
@@ -158,7 +171,11 @@ def fetch_events_weekly(
         )
         r.raise_for_status()
 
-        df = pd.DataFrame(r.json()).dropna(subset=["community_board", "event_borough"])
+        rows = r.json()
+        if not rows:
+            return pd.DataFrame(columns=["board_key", "week_start", "event_count"])
+
+        df = pd.DataFrame(rows).dropna(subset=["community_board", "event_borough"])
         for col in ["syr", "smo", "swoy", "eyr", "emo", "ewoy", "n"]:
             df[col] = df[col].astype(int)
 
