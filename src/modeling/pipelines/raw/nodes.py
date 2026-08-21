@@ -88,13 +88,11 @@ def fetch_calls_weekly_by_group(
     start_date: str, end_date: str, calls_url: str, complaint_type_groups: dict,
     raw_dir: str, retries: int, backoff_seconds: float,
 ) -> pd.DataFrame:
-    """Same query shape and cost as fetch_calls_weekly, run once per group in
-    complaint_type_groups with a `complaint_type in (...)` filter — keeps each
-    request's result set as small as the existing single-total fetch. Adding
-    complaint_type as a group-by dimension instead (one combined query, board x week x
-    type) was tried first and inflates the result set by ~30x, too slow for one request.
-    The "other" bucket isn't fetched here — build_grouped_target derives it by
-    subtracting these group totals from the unfiltered fetch_calls_weekly total.
+    """Same query shape as fetch_calls_weekly, run once per group with a
+    `complaint_type in (...)` filter rather than adding complaint_type as a group-by
+    dimension, which would multiply the result set ~30x. The "other" bucket isn't
+    fetched here — build_grouped_target derives it by subtracting these totals from
+    the unfiltered fetch_calls_weekly total.
     """
     frames = []
     for group, types in complaint_type_groups.items():
@@ -120,11 +118,8 @@ def fetch_calls_weekly_by_group(
 
             rows = r.json()
             if not rows:
-                # A genuinely empty result — plausible here (unlike the wide unfiltered
-                # fetch) since a single group's narrow date range can have zero matches,
-                # not a fetch failure. pd.DataFrame([]) has no columns at all, so the
-                # dropna/astype calls below would raise on a missing column rather than
-                # correctly treating "zero rows" as a valid result.
+                # Socrata returns [] for zero matches, not an error — pd.DataFrame([])
+                # has no columns, so the code below would crash on a missing column.
                 return pd.DataFrame(columns=["board_key", "week_start", "calls"])
 
             df = pd.DataFrame(rows).dropna(subset=["community_board"])
@@ -212,10 +207,9 @@ def fetch_weather_weekly(
     raw_dir: str, retries: int, backoff_seconds: float,
     forecast_end_date: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    # forecast_end_date lets the forecast leg reach further ahead than the archive leg —
-    # the archive (actual/historical) API can't return data for dates that haven't
-    # happened yet, so it always stays bounded by end_date. Defaults to end_date,
-    # matching training's behavior where both legs share one range.
+    # forecast_end_date lets the forecast leg reach further ahead than the archive
+    # leg, which can't return data for dates that haven't happened yet. Defaults to
+    # end_date, matching training where both legs share one range.
     forecast_end_date = forecast_end_date or end_date
 
     def fetch():

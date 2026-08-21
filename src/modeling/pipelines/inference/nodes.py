@@ -80,17 +80,11 @@ def build_next_week_features(
 def _winsorize_isolated_outliers(
     df: pd.DataFrame, value_col: str, z_threshold: float, min_corroborators: int,
 ) -> pd.DataFrame:
-    """Cap a board-week's value to that board's own historical median when it's both
-    an extreme outlier (modified z-score vs. that board's own median/MAD) AND
-    isolated — no other board shows an elevated reading the same week.
-
-    Tuned against two real cases in this data: a recurring Noise complaint-count
-    artifact in one board (Noise - Residential alone at 90%+ of that board's weekly
-    total, no other board moving that week) that a magnitude threshold alone can't
-    tell apart from a genuine citywide snowstorm week (also one category dominating
-    a board's total, but 8-10 other boards elevated the same week). Isolation, not
-    magnitude, is what actually distinguishes an artifact from a real event here —
-    see docs/delta-eda for the full comparison.
+    """Cap a board-week to that board's own historical median when it's an extreme
+    outlier (modified z-score) AND isolated (no other board elevated the same week).
+    Magnitude alone can't tell a data artifact from a real citywide event — both can
+    show one category dominating a board's total — but only the artifact is isolated;
+    see docs/delta-eda for the two real cases this was tuned against.
     """
     df = df.copy()
     df[value_col] = df[value_col].astype(float)  # median/winsorized values are never whole call counts
@@ -111,14 +105,10 @@ def compute_call_deltas(
     ranked_districts: pd.DataFrame, modeling_data: pd.DataFrame, target_col: str,
     delta_baseline_weeks: int, outlier_z_threshold: float, outlier_min_corroborators: int,
 ) -> pd.DataFrame:
-    """delta_{target_col} = this week's prediction minus each board's own trailing
-    delta_baseline_weeks average of actual calls — a 4-week trailing baseline was the
-    lowest-noise choice tested across a sensitivity sweep (see docs/delta-eda);
-    shorter windows are noisier, longer ones start blending across seasons.
-
-    delta_rank ranks only positive deltas (increases) — per direction, decreases
-    aren't the point of this signal, so a board with a predicted drop gets no rank at
-    all rather than a top-5 slot for the "wrong" reason.
+    """delta_{target_col} = prediction minus each board's own trailing
+    delta_baseline_weeks average of actual calls (4 weeks — the lowest-noise choice
+    from a sensitivity sweep, see docs/delta-eda). delta_rank only ranks positive
+    deltas — a predicted decrease gets no rank at all, never a top-5 slot.
     """
     pred_col = f"pred_{target_col}"
     delta_col = f"delta_{target_col}"
@@ -168,15 +158,10 @@ def add_shap_reasons(
     shared_feature_cols: list, max_lag_weeks: int, top_reasons: int, reason_map: dict,
 ) -> pd.DataFrame:
     """Top-N *distinct* reasons per district, by pooled SHAP contribution strength
-    across every group's model — no single model sees the whole picture, so a
-    district's overall "why" can only be told by combining them.
-
-    Each group's feature names are stripped back to their un-suffixed form
-    (ft_lag_1_noise -> ft_lag_1) before pooling, then contributions with the same
-    stripped name are summed. reason_map already treats every group's ft_lag_1
-    identically (one entry, "recent historical patterns") — this just extends that
-    same granularity across groups, rather than needing 10x the reason_map entries or
-    letting 10 separately-named candidates compete for the same reason slot.
+    across every group's model — no single model sees the whole picture. Feature names
+    are stripped back to their un-suffixed form (ft_lag_1_noise -> ft_lag_1) and summed
+    before pooling, since reason_map already treats every group's ft_lag_1 identically
+    — this avoids needing 10x the reason_map entries.
     """
     contributions = []
     for group, model in models.items():

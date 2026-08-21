@@ -67,7 +67,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         ),
         node(
             func=build_grouped_target,
-            inputs=["calls_weekly", "calls_by_group", "params:complaint_type_groups"],
+            inputs=["calls_weekly", "calls_by_group", "params:complaint_type_groups", "params:real_board_keys"],
             outputs="target",
             name="build_target",
         ),

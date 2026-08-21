@@ -58,10 +58,7 @@ mlflow_tweet_experiment: "311-tweet"
 mlflow_tweet_delta_experiment: "311-tweet-delta"
 mlflow_tweet_daily_experiment: "311-tweet-daily"
 
-# delta = prediction minus each district's own trailing delta_baseline_weeks average of
-# actual calls; 4 weeks is the least-noisy window from a K-sensitivity sweep (see
-# docs/delta-eda). outlier_z_threshold/outlier_min_corroborators tune the isolated-
-# outlier filter in compute_call_deltas — see its docstring for what they're tuned against.
+# see compute_call_deltas / docs/delta-eda for what these three are tuned against
 delta_baseline_weeks: 4
 outlier_z_threshold: 8.0
 outlier_min_corroborators: 5
@@ -84,6 +81,79 @@ weekday_to_rank:
   2: 3
   3: 4
   4: 5
+
+real_board_keys:
+  - "01 BRONX"
+  - "01 BROOKLYN"
+  - "01 MANHATTAN"
+  - "01 QUEENS"
+  - "01 STATEN ISLAND"
+  - "02 BRONX"
+  - "02 BROOKLYN"
+  - "02 MANHATTAN"
+  - "02 QUEENS"
+  - "02 STATEN ISLAND"
+  - "03 BRONX"
+  - "03 BROOKLYN"
+  - "03 MANHATTAN"
+  - "03 QUEENS"
+  - "03 STATEN ISLAND"
+  - "04 BRONX"
+  - "04 BROOKLYN"
+  - "04 MANHATTAN"
+  - "04 QUEENS"
+  - "05 BRONX"
+  - "05 BROOKLYN"
+  - "05 MANHATTAN"
+  - "05 QUEENS"
+  - "06 BRONX"
+  - "06 BROOKLYN"
+  - "06 MANHATTAN"
+  - "06 QUEENS"
+  - "07 BRONX"
+  - "07 BROOKLYN"
+  - "07 MANHATTAN"
+  - "07 QUEENS"
+  - "08 BRONX"
+  - "08 BROOKLYN"
+  - "08 MANHATTAN"
+  - "08 QUEENS"
+  - "09 BRONX"
+  - "09 BROOKLYN"
+  - "09 MANHATTAN"
+  - "09 QUEENS"
+  - "10 BRONX"
+  - "10 BROOKLYN"
+  - "10 MANHATTAN"
+  - "10 QUEENS"
+  - "11 BRONX"
+  - "11 BROOKLYN"
+  - "11 MANHATTAN"
+  - "11 QUEENS"
+  - "12 BRONX"
+  - "12 BROOKLYN"
+  - "12 MANHATTAN"
+  - "12 QUEENS"
+  - "13 BROOKLYN"
+  - "13 QUEENS"
+  - "14 BROOKLYN"
+  - "14 QUEENS"
+  - "15 BROOKLYN"
+  - "16 BROOKLYN"
+  - "17 BROOKLYN"
+  - "18 BROOKLYN"
+  - "26 BRONX"
+  - "27 BRONX"
+  - "28 BRONX"
+  - "55 BROOKLYN"
+  - "56 BROOKLYN"
+  - "64 MANHATTAN"
+  - "80 QUEENS"
+  - "81 QUEENS"
+  - "82 QUEENS"
+  - "83 QUEENS"
+  - "84 QUEENS"
+  - "95 STATEN ISLAND"
 
 complaint_type_groups:
   noise:

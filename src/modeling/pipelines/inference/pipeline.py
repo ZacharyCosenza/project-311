@@ -57,7 +57,10 @@ def create_pipeline(**kwargs) -> Pipeline:
         ),
         node(
             func=build_grouped_target,
-            inputs=["inference_calls_weekly", "inference_calls_by_group", "params:complaint_type_groups"],
+            inputs=[
+                "inference_calls_weekly", "inference_calls_by_group",
+                "params:complaint_type_groups", "params:real_board_keys",
+            ],
             outputs="inference_target",
             name="inference_build_target",
         ),

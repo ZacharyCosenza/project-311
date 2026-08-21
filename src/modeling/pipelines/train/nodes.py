@@ -21,15 +21,9 @@ def compute_train_end_date() -> str:
 
 def drop_incomplete_grouped_rows(features: pd.DataFrame) -> pd.DataFrame:
     """Thin wrapper around features.drop_incomplete_rows — the lag-column list is read
-    off the dataframe itself (every ft_lag_ column, across all groups) rather than
-    passed in, since the column set is group-driven, not a fixed list.
-
-    Also drops rows where tgt_other is null. The named group targets are always
-    zero-filled by build_grouped_target, but tgt_other can genuinely be missing for the
-    most recent weeks if calls (the unfiltered total it's derived from) fell back
-    further behind than calls_by_group — drop_incomplete_rows only checks feature
-    (ft_) completeness, not target (tgt_) completeness, so this is the one place that
-    gap needs to be caught before it reaches training.
+    off the dataframe itself rather than passed in, since it's group-driven. Also
+    drops rows where tgt_other is null (the one target build_grouped_target doesn't
+    zero-fill, and drop_incomplete_rows only checks feature completeness, not target).
     """
     lag_cols = [c for c in features.columns if c.startswith("ft_lag_")]
     return drop_incomplete_rows(features, lag_cols).dropna(subset=["tgt_other"]).reset_index(drop=True)
