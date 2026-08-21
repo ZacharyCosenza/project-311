@@ -77,6 +77,71 @@ def build_next_week_features(
     return next_week
 
 
+def _winsorize_isolated_outliers(
+    df: pd.DataFrame, value_col: str, z_threshold: float, min_corroborators: int,
+) -> pd.DataFrame:
+    """Cap a board-week's value to that board's own historical median when it's both
+    an extreme outlier (modified z-score vs. that board's own median/MAD) AND
+    isolated — no other board shows an elevated reading the same week.
+
+    Tuned against two real cases in this data: a recurring Noise complaint-count
+    artifact in one board (Noise - Residential alone at 90%+ of that board's weekly
+    total, no other board moving that week) that a magnitude threshold alone can't
+    tell apart from a genuine citywide snowstorm week (also one category dominating
+    a board's total, but 8-10 other boards elevated the same week). Isolation, not
+    magnitude, is what actually distinguishes an artifact from a real event here —
+    see docs/delta-eda for the full comparison.
+    """
+    df = df.copy()
+    df[value_col] = df[value_col].astype(float)  # median/winsorized values are never whole calls counts
+    median = df.groupby("board_key")[value_col].transform("median")
+    mad = df.groupby("board_key")[value_col].transform(lambda s: (s - s.median()).abs().median())
+    mad = mad.where(mad > 0, df.groupby("board_key")[value_col].transform("std")).fillna(1.0)
+    modified_z = 0.6745 * (df[value_col] - median) / mad
+
+    elevated = modified_z > 3
+    corroborators = elevated.groupby(df["week_start"]).transform("sum").astype(int) - elevated.astype(int)
+    is_artifact = (modified_z > z_threshold) & (corroborators < min_corroborators)
+
+    df.loc[is_artifact, value_col] = median[is_artifact]
+    return df
+
+
+def compute_call_deltas(
+    ranked_districts: pd.DataFrame, modeling_data: pd.DataFrame, target_col: str,
+    delta_baseline_weeks: int, outlier_z_threshold: float, outlier_min_corroborators: int,
+) -> pd.DataFrame:
+    """delta_{target_col} = this week's prediction minus each board's own trailing
+    delta_baseline_weeks average of actual calls — a 4-week trailing baseline was the
+    lowest-noise choice tested across a sensitivity sweep (see docs/delta-eda);
+    shorter windows are noisier, longer ones start blending across seasons.
+
+    delta_rank ranks only positive deltas (increases) — per direction, decreases
+    aren't the point of this signal, so a board with a predicted drop gets no rank at
+    all rather than a top-5 slot for the "wrong" reason.
+    """
+    pred_col = f"pred_{target_col}"
+    delta_col = f"delta_{target_col}"
+
+    history = _winsorize_isolated_outliers(
+        modeling_data[["board_key", "week_start", target_col]], target_col,
+        outlier_z_threshold, outlier_min_corroborators,
+    )
+    baseline = (
+        history.sort_values("week_start")
+        .groupby("board_key")[target_col]
+        .apply(lambda s: s.tail(delta_baseline_weeks).mean())
+    )
+
+    result = ranked_districts.copy()
+    result[delta_col] = result[pred_col] - result["board_key"].map(baseline)
+
+    positive = result[delta_col] > 0
+    result["delta_rank"] = np.nan
+    result.loc[positive, "delta_rank"] = result.loc[positive, delta_col].rank(ascending=False, method="first")
+    return result
+
+
 def rank_districts(
     models: dict, next_week_features: pd.DataFrame, complaint_type_groups: dict,
     shared_feature_cols: list, max_lag_weeks: int, target_col: str,

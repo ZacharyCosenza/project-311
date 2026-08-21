@@ -53,40 +53,88 @@ def format_weekly_summary(inference_results: pd.DataFrame, target_col: str, top_
     )
 
 
-def plot_district_map(
-    inference_results: pd.DataFrame, target_col: str, districts_url: str, boro_names: dict,
+def _plot_colored_map(
+    inference_results: pd.DataFrame, value_col: str, districts_url: str, boro_names: dict,
     raw_dir: str, report_dir: str, map_colors: list, districts_retries: int, districts_backoff_seconds: float,
+    output_filename: str,
 ) -> str:
-    """Every district shaded by predicted call volume, blue (low) to orange (high)."""
-    pred_col = f"pred_{target_col}"
     districts = _load_districts(districts_url, raw_dir, districts_retries, districts_backoff_seconds)
     districts["board_key"] = districts["boro_cd"].apply(lambda s: s[1:].zfill(2) + " " + boro_names[s[0]])
-    merged = districts.merge(inference_results[["board_key", pred_col]], on="board_key", how="left")
+    merged = districts.merge(inference_results[["board_key", value_col]], on="board_key", how="left")
 
     cmap = LinearSegmentedColormap.from_list("blue_orange", map_colors)
     fig, ax = plt.subplots(figsize=(8, 8))
     merged.plot(
-        column=pred_col, cmap=cmap, legend=True, ax=ax,
+        column=value_col, cmap=cmap, legend=True, ax=ax,
         edgecolor="white", linewidth=0.3, missing_kwds={"color": "lightgrey"},
         legend_kwds={"shrink": 0.6},
     )
     ax.set_axis_off()
     plt.tight_layout()
 
-    out = Path(report_dir) / "district_map.png"
+    out = Path(report_dir) / output_filename
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150)
     plt.close(fig)
     return str(out)
 
 
+def format_delta_summary(inference_results: pd.DataFrame, target_col: str, top_k: int) -> str:
+    """Same voice as format_weekly_summary, but led by the biggest projected increase
+    vs. each district's own recent normal rather than the highest raw volume — districts
+    with no positive delta_rank (a predicted decrease, or no change) are never included."""
+    delta_col = f"delta_{target_col}"
+    top = inference_results.dropna(subset=["delta_rank"]).sort_values("delta_rank").head(top_k)
+    week_start = inference_results["week_start"].iloc[0]
+    if top.empty:
+        return f"NYC 311 forecast for the week of {week_start}: no district is projected to see a notable increase in call activity."
+
+    leader = top.iloc[0]
+    others = ", ".join(
+        f"{row.board_key} (+{round(getattr(row, delta_col)):,})" for row in top.iloc[1:].itertuples()
+    )
+    others_text = f" Also watching: {others}." if others else ""
+    return (
+        f"NYC 311 biggest movers for the week of {week_start}: {leader['board_key']} is expected to see "
+        f"the largest jump in call activity (+{round(leader[delta_col]):,} calls vs. its recent normal)."
+        f"{others_text}"
+    )
+
+
+def plot_district_map(
+    inference_results: pd.DataFrame, target_col: str, districts_url: str, boro_names: dict,
+    raw_dir: str, report_dir: str, map_colors: list, districts_retries: int, districts_backoff_seconds: float,
+) -> str:
+    """Every district shaded by predicted call volume, blue (low) to orange (high)."""
+    return _plot_colored_map(
+        inference_results, f"pred_{target_col}", districts_url, boro_names,
+        raw_dir, report_dir, map_colors, districts_retries, districts_backoff_seconds, "district_map.png",
+    )
+
+
+def plot_delta_map(
+    inference_results: pd.DataFrame, target_col: str, districts_url: str, boro_names: dict,
+    raw_dir: str, report_dir: str, map_colors: list, districts_retries: int, districts_backoff_seconds: float,
+) -> str:
+    """Same map, shaded by predicted increase vs. each district's own recent normal
+    instead of raw predicted volume."""
+    return _plot_colored_map(
+        inference_results, f"delta_{target_col}", districts_url, boro_names,
+        raw_dir, report_dir, map_colors, districts_retries, districts_backoff_seconds, "delta_map.png",
+    )
+
+
 def select_daily_district(inference_results: pd.DataFrame, weekday_to_rank: dict) -> pd.DataFrame:
+    """Picks by delta_rank (biggest projected increase) rather than rank (highest raw
+    volume) — a district with no positive delta that day just won't be selected, same
+    as the existing weekend guard: no meaningful story, no tweet."""
     rank = weekday_to_rank.get(date.today().weekday(), 1)
-    return inference_results[inference_results["rank"] == rank]
+    return inference_results[inference_results["delta_rank"] == rank]
 
 
 def format_daily_deep_dive(daily_district: pd.DataFrame, target_col: str) -> str:
     pred_col = f"pred_{target_col}"
+    delta_col = f"delta_{target_col}"
     row = daily_district.iloc[0]
     reasons = list(row["reasons"])
 
@@ -99,7 +147,8 @@ def format_daily_deep_dive(daily_district: pd.DataFrame, target_col: str) -> str
 
     return (
         f"District spotlight: {row['board_key']} is projected for ~{round(row[pred_col]):,} "
-        f"311 calls the week of {row['week_start']}, driven by {reason_text}."
+        f"311 calls the week of {row['week_start']}, up ~{round(row[delta_col]):,} from its recent "
+        f"normal, driven by {reason_text}."
     )
 
 

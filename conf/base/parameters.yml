@@ -56,7 +56,16 @@ lookback_weeks: 3
 top_k: 5
 top_reasons: 3
 mlflow_tweet_experiment: "311-tweet"
+mlflow_tweet_delta_experiment: "311-tweet-delta"
 mlflow_tweet_daily_experiment: "311-tweet-daily"
+
+# delta = prediction minus each district's own trailing delta_baseline_weeks average of
+# actual calls; 4 weeks is the least-noisy window from a K-sensitivity sweep (see
+# docs/delta-eda). outlier_z_threshold/outlier_min_corroborators tune the isolated-
+# outlier filter in compute_call_deltas — see its docstring for what they're tuned against.
+delta_baseline_weeks: 4
+outlier_z_threshold: 8.0
+outlier_min_corroborators: 5
 
 districts_url: "https://data.cityofnewyork.us/resource/5crt-au7u.geojson"
 boro_names:

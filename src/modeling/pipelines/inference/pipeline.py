@@ -4,7 +4,7 @@ from modeling.pipelines.features.nodes import featurize_events, featurize_groupe
 from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_calls_weekly_by_group, fetch_events_weekly, fetch_weather_weekly
 from modeling.pipelines.target.nodes import build_grouped_target
 
-from .nodes import add_shap_reasons, build_next_week_features, compute_predict_window, rank_districts
+from .nodes import add_shap_reasons, build_next_week_features, compute_call_deltas, compute_predict_window, rank_districts
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -104,9 +104,18 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="rank_districts",
         ),
         node(
+            func=compute_call_deltas,
+            inputs=[
+                "ranked_districts", "modeling_data", "params:target_col",
+                "params:delta_baseline_weeks", "params:outlier_z_threshold", "params:outlier_min_corroborators",
+            ],
+            outputs="districts_with_deltas",
+            name="compute_call_deltas",
+        ),
+        node(
             func=add_shap_reasons,
             inputs=[
-                "models", "ranked_districts", "params:complaint_type_groups",
+                "models", "districts_with_deltas", "params:complaint_type_groups",
                 "params:shared_feature_cols", "params:max_lag_weeks", "params:top_reasons", "params:reason_map",
             ],
             outputs="inference_results",
