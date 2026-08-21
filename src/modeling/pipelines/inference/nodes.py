@@ -93,7 +93,7 @@ def _winsorize_isolated_outliers(
     see docs/delta-eda for the full comparison.
     """
     df = df.copy()
-    df[value_col] = df[value_col].astype(float)  # median/winsorized values are never whole calls counts
+    df[value_col] = df[value_col].astype(float)  # median/winsorized values are never whole call counts
     median = df.groupby("board_key")[value_col].transform("median")
     mad = df.groupby("board_key")[value_col].transform(lambda s: (s - s.median()).abs().median())
     mad = mad.where(mad > 0, df.groupby("board_key")[value_col].transform("std")).fillna(1.0)

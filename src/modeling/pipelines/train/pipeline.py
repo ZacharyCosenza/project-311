@@ -6,11 +6,13 @@ from modeling.pipelines.target.nodes import build_grouped_target
 
 from .nodes import (
     compute_grouped_metrics,
+    compute_train_end_date,
     drop_incomplete_grouped_rows,
     log_groups_to_mlflow,
     plot_grouped_histograms,
     plot_grouped_shap_beeswarm,
     plot_grouped_timeseries,
+    plot_metrics_comparison,
     train_models,
 )
 
@@ -18,9 +20,15 @@ from .nodes import (
 def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
+            func=compute_train_end_date,
+            inputs=None,
+            outputs="train_end_date",
+            name="compute_train_end_date",
+        ),
+        node(
             func=fetch_calls_weekly,
             inputs=[
-                "params:start_date", "params:end_date", "params:calls_url", "params:raw_dir",
+                "params:start_date", "train_end_date", "params:calls_url", "params:raw_dir",
                 "params:raw_fetch_retries", "params:raw_fetch_backoff_seconds",
             ],
             outputs="calls_weekly",
@@ -29,7 +37,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=fetch_calls_weekly_by_group,
             inputs=[
-                "params:start_date", "params:end_date", "params:calls_url", "params:complaint_type_groups",
+                "params:start_date", "train_end_date", "params:calls_url", "params:complaint_type_groups",
                 "params:raw_dir", "params:raw_fetch_retries", "params:raw_fetch_backoff_seconds",
             ],
             outputs="calls_by_group",
@@ -38,7 +46,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=fetch_events_weekly,
             inputs=[
-                "params:start_date", "params:end_date", "params:events_url",
+                "params:start_date", "train_end_date", "params:events_url",
                 "params:event_include_types", "params:raw_dir",
                 "params:raw_fetch_retries", "params:raw_fetch_backoff_seconds",
             ],
@@ -48,7 +56,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=fetch_weather_weekly,
             inputs=[
-                "params:start_date", "params:end_date",
+                "params:start_date", "train_end_date",
                 "params:weather_lat", "params:weather_lon",
                 "params:weather_daily_vars",
                 "params:weather_archive_url", "params:weather_forecast_url",
@@ -112,6 +120,12 @@ def create_pipeline(**kwargs) -> Pipeline:
             ],
             outputs="metrics",
             name="compute_metrics",
+        ),
+        node(
+            func=plot_metrics_comparison,
+            inputs=["metrics", "params:report_dir"],
+            outputs=None,
+            name="plot_metrics_comparison",
         ),
         node(
             func=log_groups_to_mlflow,

@@ -1,5 +1,4 @@
 start_date: "2021-01-01"
-end_date: "2026-07-25"
 
 calls_url: "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
 events_url: "https://data.cityofnewyork.us/resource/bkfu-528j.json"

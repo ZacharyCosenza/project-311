@@ -1,10 +1,22 @@
+from datetime import date
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
 from modeling.pipelines.features.nodes import drop_incomplete_rows, group_feature_cols
 from modeling.pipelines.modeling.nodes import compute_metrics, log_to_mlflow, plot_feature_histograms, plot_feature_timeseries, plot_shap_beeswarm
+
+
+def compute_train_end_date() -> str:
+    """A constant end_date in parameters.yml would silently stop the training window
+    from ever advancing past whatever date was last typed in there — this keeps it at
+    today, the same way inference.compute_predict_window does for its own window.
+    """
+    return date.today().isoformat()
 
 
 def drop_incomplete_grouped_rows(features: pd.DataFrame) -> pd.DataFrame:
@@ -105,6 +117,31 @@ def log_groups_to_mlflow(
             mlflow_tracking_uri, mlflow_experiment, f"{mlflow_model_name}-{group}",
             model_params, f"{report_dir}/{group}", extra_tags={"target_group": group},
         )
+
+
+def plot_metrics_comparison(metrics: pd.DataFrame, report_dir: str) -> None:
+    """The per-group plots (histograms, timeseries, beeswarm) each show one head in
+    isolation, in its own subfolder — nothing compares heads against each other. This
+    is the one chart at the top level of report_dir that does: test MAE improvement
+    over the last-week baseline, per group, so a reviewer can see at a glance which
+    heads are actually earning their keep without opening all 11 subfolders.
+    """
+    test = metrics[(metrics["split"] == "test") & (metrics["metric"].isin(["mae", "baseline_mae"]))]
+    pivot = test.pivot(index="group", columns="metric", values="value")
+    pivot["improvement_pct"] = 100 * (pivot["baseline_mae"] - pivot["mae"]) / pivot["baseline_mae"]
+    pivot = pivot.sort_values("improvement_pct")
+
+    fig, ax = plt.subplots(figsize=(8, 0.5 * len(pivot) + 1.5))
+    colors = ["#93c5fd" if v >= 0 else "#f97316" for v in pivot["improvement_pct"]]
+    ax.barh(pivot.index, pivot["improvement_pct"], color=colors)
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_xlabel("% improvement over last-week baseline (test MAE)")
+    plt.tight_layout()
+
+    out = Path(report_dir) / "metrics_comparison.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out)
+    plt.close(fig)
 
 
 def plot_grouped_histograms(
