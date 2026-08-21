@@ -1,10 +1,10 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from modeling.pipelines.features.nodes import featurize_events, featurize_lags, featurize_weather, join_features
-from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_events_weekly, fetch_weather_weekly
-from modeling.pipelines.target.nodes import build_target
+from modeling.pipelines.features.nodes import featurize_events, featurize_grouped_lags, featurize_weather, join_grouped_features
+from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_calls_weekly_by_group, fetch_events_weekly, fetch_weather_weekly
+from modeling.pipelines.target.nodes import build_grouped_target
 
-from .nodes import add_shap_reasons, build_next_week_features, compute_predict_window, rank_districts
+from .nodes import add_shap_reasons, build_next_week_features, compute_call_deltas, compute_predict_window, rank_districts
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -23,6 +23,15 @@ def create_pipeline(**kwargs) -> Pipeline:
             ],
             outputs="inference_calls_weekly",
             name="inference_fetch_calls",
+        ),
+        node(
+            func=fetch_calls_weekly_by_group,
+            inputs=[
+                "inference_start_date", "inference_end_date", "params:calls_url", "params:complaint_type_groups",
+                "params:raw_dir", "params:raw_fetch_retries", "params:raw_fetch_backoff_seconds",
+            ],
+            outputs="inference_calls_by_group",
+            name="inference_fetch_calls_by_group",
         ),
         node(
             func=fetch_events_weekly,
@@ -47,14 +56,14 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="inference_fetch_weather",
         ),
         node(
-            func=build_target,
-            inputs=["inference_calls_weekly", "params:target_col"],
+            func=build_grouped_target,
+            inputs=["inference_calls_weekly", "inference_calls_by_group", "params:complaint_type_groups"],
             outputs="inference_target",
             name="inference_build_target",
         ),
         node(
-            func=featurize_lags,
-            inputs=["inference_target", "params:target_col", "params:max_lag_weeks", "params:year_offset_weeks"],
+            func=featurize_grouped_lags,
+            inputs=["inference_target", "params:complaint_type_groups", "params:max_lag_weeks", "params:year_offset_weeks"],
             outputs="inference_lag_features",
             name="inference_featurize_lags",
         ),
@@ -71,11 +80,8 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="inference_featurize_weather",
         ),
         node(
-            func=join_features,
-            inputs=[
-                "inference_target", "inference_lag_features", "inference_event_features",
-                "inference_weather_features", "params:feature_cols", "params:categorical_features",
-            ],
+            func=join_grouped_features,
+            inputs=["inference_target", "inference_lag_features", "inference_event_features", "inference_weather_features"],
             outputs="inference_features",
             name="inference_join_features",
         ),
@@ -83,20 +89,35 @@ def create_pipeline(**kwargs) -> Pipeline:
             func=build_next_week_features,
             inputs=[
                 "inference_features", "inference_event_features", "inference_weather_features",
-                "modeling_data", "params:target_col", "params:max_lag_weeks", "params:year_offset_weeks",
+                "modeling_data", "params:complaint_type_groups", "params:max_lag_weeks", "params:year_offset_weeks",
             ],
             outputs="inference_next_week_features",
             name="build_next_week_features",
         ),
         node(
             func=rank_districts,
-            inputs=["model", "inference_next_week_features", "params:feature_cols", "params:target_col"],
+            inputs=[
+                "models", "inference_next_week_features", "params:complaint_type_groups",
+                "params:shared_feature_cols", "params:max_lag_weeks", "params:target_col",
+            ],
             outputs="ranked_districts",
             name="rank_districts",
         ),
         node(
+            func=compute_call_deltas,
+            inputs=[
+                "ranked_districts", "modeling_data", "params:target_col",
+                "params:delta_baseline_weeks", "params:outlier_z_threshold", "params:outlier_min_corroborators",
+            ],
+            outputs="districts_with_deltas",
+            name="compute_call_deltas",
+        ),
+        node(
             func=add_shap_reasons,
-            inputs=["model", "ranked_districts", "params:feature_cols", "params:top_reasons", "params:reason_map"],
+            inputs=[
+                "models", "districts_with_deltas", "params:complaint_type_groups",
+                "params:shared_feature_cols", "params:max_lag_weeks", "params:top_reasons", "params:reason_map",
+            ],
             outputs="inference_results",
             name="add_shap_reasons",
         ),

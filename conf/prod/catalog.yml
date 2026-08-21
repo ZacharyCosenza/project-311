@@ -1,43 +1,7 @@
 # Prod overrides — same structure as base but under data/prod/
-calls_weekly:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/calls_weekly.parquet
-
-events_weekly:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/events_weekly.parquet
-
-weather_lag1:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/weather_lag1.parquet
-
-weather_pred:
-  type: pandas.ParquetDataset
-  filepath: data/prod/00_raw/weather_pred.parquet
-
-target:
-  type: pandas.ParquetDataset
-  filepath: data/prod/01_processed/target.parquet
-
-lag_features:
-  type: pandas.ParquetDataset
-  filepath: data/prod/01_processed/lag_features.parquet
-
-event_features:
-  type: pandas.ParquetDataset
-  filepath: data/prod/01_processed/event_features.parquet
-
-weather_features:
-  type: pandas.ParquetDataset
-  filepath: data/prod/01_processed/weather_features.parquet
-
-features:
-  type: pandas.ParquetDataset
-  filepath: data/prod/01_processed/features.parquet
-
-model:
+models:
   type: pickle.PickleDataset
-  filepath: data/prod/02_reporting/model.pkl
+  filepath: data/prod/02_reporting/models.pkl
 
 modeling_data:
   type: pandas.ParquetDataset
@@ -54,6 +18,10 @@ inference_results:
 tweet_summary_text:
   type: text.TextDataset
   filepath: data/prod/02_reporting/tweet_summary.txt
+
+tweet_delta_summary_text:
+  type: text.TextDataset
+  filepath: data/prod/02_reporting/tweet_delta_summary.txt
 
 tweet_daily_text:
   type: text.TextDataset

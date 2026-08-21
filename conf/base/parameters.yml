@@ -1,5 +1,4 @@
 start_date: "2021-01-01"
-end_date: "2026-07-25"
 
 calls_url: "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
 events_url: "https://data.cityofnewyork.us/resource/bkfu-528j.json"
@@ -43,34 +42,6 @@ stratify_col: "week_start"
 max_lag_weeks: 6
 year_offset_weeks: 52  # for the "_ly" (last-year) lags — separates recent trend from same-time-last-year
 
-feature_cols:
-  - "ft_week_of_year"
-  - "ft_lag_1"
-  - "ft_lag_2"
-  - "ft_lag_3"
-  - "ft_lag_4"
-  - "ft_lag_5"
-  - "ft_lag_6"
-  - "ft_lag_1_ly"
-  - "ft_lag_2_ly"
-  - "ft_lag_3_ly"
-  - "ft_lag_4_ly"
-  - "ft_lag_5_ly"
-  - "ft_lag_6_ly"
-  - "ft_event_count"
-  - "ft_lag1_temp_max"
-  - "ft_lag1_temp_min"
-  - "ft_lag1_had_rain"
-  - "ft_lag1_had_snow"
-  - "ft_pred_temp_max"
-  - "ft_pred_temp_min"
-  - "ft_pred_had_rain"
-  - "ft_pred_had_snow"
-  - "ft_board_key"
-
-categorical_features:
-  - "ft_board_key"
-
 raw_dir: "data/dev/00_raw"
 report_dir: "data/dev/02_reporting"
 mlflow_tracking_uri: "sqlite:///data/dev/02_reporting/mlflow.db"
@@ -84,7 +55,16 @@ lookback_weeks: 3
 top_k: 5
 top_reasons: 3
 mlflow_tweet_experiment: "311-tweet"
+mlflow_tweet_delta_experiment: "311-tweet-delta"
 mlflow_tweet_daily_experiment: "311-tweet-daily"
+
+# delta = prediction minus each district's own trailing delta_baseline_weeks average of
+# actual calls; 4 weeks is the least-noisy window from a K-sensitivity sweep (see
+# docs/delta-eda). outlier_z_threshold/outlier_min_corroborators tune the isolated-
+# outlier filter in compute_call_deltas — see its docstring for what they're tuned against.
+delta_baseline_weeks: 4
+outlier_z_threshold: 8.0
+outlier_min_corroborators: 5
 
 districts_url: "https://data.cityofnewyork.us/resource/5crt-au7u.geojson"
 boro_names:
@@ -104,6 +84,71 @@ weekday_to_rank:
   2: 3
   3: 4
   4: 5
+
+complaint_type_groups:
+  noise:
+    - "Noise"
+    - "Noise - Residential"
+    - "Noise - Street/Sidewalk"
+    - "Noise - Commercial"
+    - "Noise - Vehicle"
+    - "Noise - Helicopter"
+  parking_vehicles:
+    - "Illegal Parking"
+    - "Blocked Driveway"
+    - "Abandoned Vehicle"
+    - "Derelict Vehicles"
+  heat_hot_water:
+    - "HEAT/HOT WATER"
+  housing_conditions:
+    - "UNSANITARY CONDITION"
+    - "PLUMBING"
+    - "PAINT/PLASTER"
+    - "DOOR/WINDOW"
+    - "WATER LEAK"
+    - "FLOORING/STAIRS"
+    - "ELECTRIC"
+    - "APPLIANCE"
+    - "General Construction/Plumbing"
+    - "Building/Use"
+  streets_traffic:
+    - "Street Condition"
+    - "Traffic Signal Condition"
+    - "Street Light Condition"
+    - "Sidewalk Condition"
+  sanitation_trash:
+    - "Dirty Condition"
+    - "Missed Collection"
+    - "Illegal Dumping"
+    - "Request Large Bulky Item Collection"
+  water_sewer:
+    - "Water System"
+    - "Sewer"
+  parks_trees:
+    - "Damaged Tree"
+    - "Overgrown Tree/Branches"
+  homelessness:
+    - "Encampment"
+    - "Homeless Person Assistance"
+  pests_health:
+    - "Rodent"
+# anything not listed above falls into the residual "other" group — see build_grouped_target
+
+shared_feature_cols:
+  - "ft_week_of_year"
+  - "ft_event_count"
+  - "ft_lag1_temp_max"
+  - "ft_lag1_temp_min"
+  - "ft_lag1_had_rain"
+  - "ft_lag1_had_snow"
+  - "ft_pred_temp_max"
+  - "ft_pred_temp_min"
+  - "ft_pred_had_rain"
+  - "ft_pred_had_snow"
+  - "ft_board_key"
+
+shared_categorical_features:
+  - "ft_board_key"
 
 reason_map:
   ft_lag_1: "recent historical patterns"

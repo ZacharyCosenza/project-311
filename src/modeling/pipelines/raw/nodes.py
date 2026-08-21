@@ -20,10 +20,20 @@ def _iso_week_monday(yr: int, mo: int, woy: int) -> date:
 
 
 def _with_fallback(fetch, name: str, retries: int, backoff_seconds: float, *fallback_paths: str):
-    """Retry `fetch`, falling back to the last saved raw parquet(s) on repeated failure."""
+    """Retry `fetch`, caching every successful result to fallback_paths and falling
+    back to the last cached version on repeated failure. Caching happens here, not via
+    kedro's catalog, because raw fetch outputs are left as undeclared/in-memory kedro
+    datasets — this keeps the fallback resilience self-contained regardless of
+    whichever datasets happen to be declared in catalog.yml.
+    """
     for attempt in range(1, retries + 1):
         try:
-            return fetch()
+            result = fetch()
+            values = result if isinstance(result, tuple) else (result,)
+            for value, path in zip(values, fallback_paths):
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                value.to_parquet(path)
+            return result
         except Exception as e:
             print(f"[{name}] attempt {attempt}/{retries} failed: {e}", file=sys.stderr)
             if attempt < retries:
@@ -56,7 +66,11 @@ def fetch_calls_weekly(
         )
         r.raise_for_status()
 
-        df = pd.DataFrame(r.json()).dropna(subset=["community_board"])
+        rows = r.json()
+        if not rows:
+            return pd.DataFrame(columns=["board_key", "week_start", "calls"])
+
+        df = pd.DataFrame(rows).dropna(subset=["community_board"])
         df["yr"] = df["yr"].astype(int)
         df["mo"] = df["mo"].astype(int)
         df["woy"] = df["woy"].astype(int)
@@ -68,6 +82,68 @@ def fetch_calls_weekly(
     return _with_fallback(
         fetch, "fetch_calls_weekly", retries, backoff_seconds, str(Path(raw_dir) / "calls_weekly.parquet"),
     )
+
+
+def fetch_calls_weekly_by_group(
+    start_date: str, end_date: str, calls_url: str, complaint_type_groups: dict,
+    raw_dir: str, retries: int, backoff_seconds: float,
+) -> pd.DataFrame:
+    """Same query shape and cost as fetch_calls_weekly, run once per group in
+    complaint_type_groups with a `complaint_type in (...)` filter — keeps each
+    request's result set as small as the existing single-total fetch. Adding
+    complaint_type as a group-by dimension instead (one combined query, board x week x
+    type) was tried first and inflates the result set by ~30x, too slow for one request.
+    The "other" bucket isn't fetched here — build_grouped_target derives it by
+    subtracting these group totals from the unfiltered fetch_calls_weekly total.
+    """
+    frames = []
+    for group, types in complaint_type_groups.items():
+        type_list = ",".join(f"'{t}'" for t in types)
+
+        def fetch():
+            select = (
+                "community_board, date_extract_y(created_date) as yr, "
+                "date_extract_m(created_date) as mo, date_extract_woy(created_date) as woy, "
+                "count(*) as calls"
+            )
+            where = (
+                f"created_date >= '{start_date}' and created_date <= '{end_date}'"
+                f" and complaint_type in({type_list})"
+            )
+            group_by = "community_board, yr, mo, woy"
+            r = requests.get(
+                calls_url,
+                params={"$select": select, "$where": where, "$group": group_by, "$limit": "50000"},
+                timeout=300,
+            )
+            r.raise_for_status()
+
+            rows = r.json()
+            if not rows:
+                # A genuinely empty result — plausible here (unlike the wide unfiltered
+                # fetch) since a single group's narrow date range can have zero matches,
+                # not a fetch failure. pd.DataFrame([]) has no columns at all, so the
+                # dropna/astype calls below would raise on a missing column rather than
+                # correctly treating "zero rows" as a valid result.
+                return pd.DataFrame(columns=["board_key", "week_start", "calls"])
+
+            df = pd.DataFrame(rows).dropna(subset=["community_board"])
+            df["yr"] = df["yr"].astype(int)
+            df["mo"] = df["mo"].astype(int)
+            df["woy"] = df["woy"].astype(int)
+            df["calls"] = df["calls"].astype(int)
+            df["week_start"] = df.apply(lambda r: _iso_week_monday(r["yr"], r["mo"], r["woy"]), axis=1)
+            df["board_key"] = df["community_board"]
+            return df.groupby(["board_key", "week_start"])["calls"].sum().reset_index()
+
+        result = _with_fallback(
+            fetch, f"fetch_calls_weekly_by_group[{group}]", retries, backoff_seconds,
+            str(Path(raw_dir) / f"calls_weekly_{group}.parquet"),
+        )
+        result["group"] = group
+        frames.append(result)
+
+    return pd.concat(frames, ignore_index=True)
 
 
 def fetch_events_weekly(
@@ -95,7 +171,11 @@ def fetch_events_weekly(
         )
         r.raise_for_status()
 
-        df = pd.DataFrame(r.json()).dropna(subset=["community_board", "event_borough"])
+        rows = r.json()
+        if not rows:
+            return pd.DataFrame(columns=["board_key", "week_start", "event_count"])
+
+        df = pd.DataFrame(rows).dropna(subset=["community_board", "event_borough"])
         for col in ["syr", "smo", "swoy", "eyr", "emo", "ewoy", "n"]:
             df[col] = df[col].astype(int)
 
