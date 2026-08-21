@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: tweet-delta-summary
+  namespace: argo
+spec:
+  schedules:
+    - "17 8 * * 1"          # Mondays only, 8:17 AM America/New_York — after tweet-summary
+  timezone: "America/New_York"
+  concurrencyPolicy: Forbid # skip if a run is already in progress
+  workflowSpec:
+    serviceAccountName: argo
+    entrypoint: tweet-delta-summary
+    volumes:
+      - name: data
+        hostPath:
+          path: /app/data
+    templates:
+      - name: tweet-delta-summary
+        container:
+          image: ghcr.io/zacharycosenza/modeling:latest
+          imagePullPolicy: Always
+          command: ["kedro", "run", "--pipeline", "tweet_delta_summary"]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          env:
+            - name: KEDRO_ENV
+              value: "prod"
+          envFrom:
+            - secretRef:
+                name: twitter-credentials
+          volumeMounts:
+            - name: data
+              mountPath: /app/data

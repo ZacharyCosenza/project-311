@@ -154,10 +154,11 @@ deploy/
                           # create/patch on workflowtaskresults
   application.yaml        # Argo CD Application (not bootstrapped — see below)
   workflows/
-    train.yaml            # daily 7:00 AM ET — raw+target+features+modeling, registers model
-    inference.yaml         # Mondays 8:00 AM ET — computes all-district predictions + SHAP reasons
-    tweet_summary.yaml      # Mondays 8:15 AM ET — weekly summary tweet + district map
-    tweet_daily.yaml         # Mon-Fri 8:20 AM ET — daily deep-dive tweet, one district/day
+    train.yaml              # daily 7:00 AM ET — the multi-head train pipeline, registers all 11 models
+    inference.yaml          # Mondays 8:00 AM ET — computes all-district predictions + pooled SHAP reasons
+    tweet_summary.yaml      # Mondays 8:15 AM ET — weekly volume summary tweet + district map
+    tweet_delta_summary.yaml # Mondays 8:17 AM ET — weekly biggest-increase tweet + delta map
+    tweet_daily.yaml        # Mon-Fri 8:20 AM ET — daily deep-dive tweet, picked by biggest delta
 ```
 
 All CronWorkflows: `concurrencyPolicy: Forbid` (skip if a run's still going),
