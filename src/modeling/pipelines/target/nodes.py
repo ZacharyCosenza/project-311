@@ -14,16 +14,16 @@ def build_target(calls: pd.DataFrame, target_col: str) -> pd.DataFrame:
 
 
 def build_grouped_target(
-    calls: pd.DataFrame, calls_by_group: pd.DataFrame, complaint_type_groups: dict, real_board_keys: list,
+    calls: pd.DataFrame, calls_by_group: pd.DataFrame, complaint_type_groups: dict, invalid_board_keys: list,
 ) -> pd.DataFrame:
     """Wide board x week spine: one tgt_<group> column per complaint_type_groups key,
     plus tgt_other (residual, left null rather than zero-filled where calls doesn't
     cover a week) and tgt_calls (their sum — kept for tweet/nodes.py's
     plot_daily_trend). Spine comes from calls_by_group, the more resilient of the two
-    fetches. Both inputs are filtered to real_board_keys first.
+    fetches. Both inputs drop invalid_board_keys (non-district catch-all codes) first.
     """
-    calls = calls[calls["board_key"].isin(real_board_keys)]
-    calls_by_group = calls_by_group[calls_by_group["board_key"].isin(real_board_keys)]
+    calls = calls[~calls["board_key"].isin(invalid_board_keys)]
+    calls_by_group = calls_by_group[~calls_by_group["board_key"].isin(invalid_board_keys)]
 
     boards = sorted(calls_by_group["board_key"].unique())
     weeks = sorted(calls_by_group["week_start"].unique())
