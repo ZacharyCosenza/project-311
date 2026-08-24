@@ -4,25 +4,43 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>NYC 311 Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@500;700&family=JetBrains+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.js"></script>
 <style>
 :root {
-  --blue: #2563eb;
-  --orange: #f97316;
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --border: #334155;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
+  --bg:      #090e1a;
+  --surface: #111827;
+  --panel:   #152035;
+  --border:  #1e3150;
+  --text:    #d8e4f5;
+  --muted:   #617595;
+  --missing: #1a2a40;
+  --blue:    #2563eb;
+  --orange:  #f97316;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eef2fa; --surface: #ffffff; --panel: #f5f8fe;
+    --border: #c5d4ea; --text: #0d1b2e; --muted: #5a6d85; --missing: #d5dff0;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #eef2fa; --surface: #ffffff; --panel: #f5f8fe;
+  --border: #c5d4ea; --text: #0d1b2e; --muted: #5a6d85; --missing: #d5dff0;
+}
+:root[data-theme="dark"] {
+  --bg: #090e1a; --surface: #111827; --panel: #152035;
+  --border: #1e3150; --text: #d8e4f5; --muted: #617595; --missing: #1a2a40;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Barlow', system-ui, sans-serif;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -30,122 +48,184 @@ body {
 }
 
 header {
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 1.25rem;
-  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0 1.25rem;
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-h1 {
+.wordmark {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
   font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
+.wordmark em { font-style: normal; color: var(--orange); }
 
-h1 span { color: var(--orange); }
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
+.hdivider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
 
 select {
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.35rem 0.65rem;
+  border-radius: 5px;
+  padding: 0.3rem 0.6rem;
+  font-family: 'Barlow', sans-serif;
   font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
   outline: none;
+  flex-shrink: 0;
 }
+select:hover, select:focus { border-color: var(--blue); }
+select option { background: var(--surface); }
 
-select:focus { border-color: var(--blue); }
-
-.sep { color: var(--border); font-size: 1.2rem; }
-
-.range-group { display: flex; gap: 0.25rem; }
-
-.range-btn {
-  background: var(--surface);
+#pred-btn {
+  background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.3rem 0.6rem;
+  border-radius: 5px;
+  padding: 0.3rem 0.65rem;
+  font-family: 'Barlow Condensed', sans-serif;
   font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.1s;
+  flex-shrink: 0;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+#pred-btn:hover { color: var(--text); border-color: var(--blue); }
+#pred-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
+.slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
 }
 
-.range-btn:hover { color: var(--text); border-color: var(--blue); }
-.range-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.range-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+#range-start { text-align: right; }
+
+.slider-track {
+  position: relative;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  flex: 1;
+  cursor: pointer;
+  min-width: 80px;
+  user-select: none;
+}
+
+.slider-fill {
+  position: absolute;
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  pointer-events: none;
+  transition: background 0.2s;
+}
+
+.slider-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--blue);
+  border: 2px solid var(--surface);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  z-index: 2;
+  transition: background 0.15s;
+  touch-action: none;
+}
+.slider-thumb:hover { background: var(--orange); }
+.slider-thumb:active { cursor: grabbing; }
+
+.slider-wrap.pred-active .slider-fill { background: var(--border); }
+.slider-wrap.pred-active .slider-thumb { background: var(--border); pointer-events: none; }
+.slider-wrap.pred-active .slider-track { cursor: default; }
 
 #updated {
   margin-left: auto;
-  font-size: 0.75rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 #map-wrap { flex: 1; position: relative; min-height: 0; }
 #map { width: 100%; height: 100%; background: var(--bg); }
-
 .leaflet-container { background: var(--bg); }
 
-.info-panel {
+.card {
   position: absolute;
-  bottom: 1.25rem;
-  left: 1.25rem;
-  background: var(--surface);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.75rem 1rem;
-  font-size: 0.8rem;
+  padding: 0.85rem 1rem;
   z-index: 1000;
-  min-width: 160px;
 }
 
-.info-panel h4 {
-  font-size: 0.7rem;
+.card-eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--muted);
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.45rem;
 }
 
-.info-board { color: var(--orange); font-weight: 600; margin-bottom: 0.15rem; }
-.info-value { font-size: 1rem; font-weight: 600; }
-.info-default { color: var(--muted); }
+#info-card { bottom: 1.25rem; left: 1.25rem; min-width: 165px; }
 
-.legend {
-  position: absolute;
-  bottom: 1.25rem;
-  right: 1.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  z-index: 1000;
-  font-size: 0.75rem;
+#info-board {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.1rem;
+  min-height: 1.2rem;
 }
 
-.legend h4 {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+#info-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
   color: var(--muted);
-  margin-bottom: 0.5rem;
 }
+
+#info-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; min-height: 1rem; }
+
+#legend-card { bottom: 1.25rem; right: 1.25rem; }
 
 .gradient-bar {
-  width: 140px;
+  width: 150px;
   height: 6px;
   border-radius: 3px;
   background: linear-gradient(to right, var(--blue), var(--orange));
@@ -155,37 +235,43 @@ select:focus { border-color: var(--blue); }
 .gradient-labels {
   display: flex;
   justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>NYC <span>311</span> Forecast</h1>
-  <div class="controls">
-    <select id="metric-select">
-      <option value="total">Total Calls</option>
-      <option value="noise">Noise</option>
-      <option value="parking_vehicles">Parking &amp; Vehicles</option>
-      <option value="heat_hot_water">Heat &amp; Hot Water</option>
-      <option value="housing_conditions">Housing Conditions</option>
-      <option value="streets_traffic">Streets &amp; Traffic</option>
-      <option value="sanitation_trash">Sanitation &amp; Trash</option>
-      <option value="water_sewer">Water &amp; Sewer</option>
-      <option value="parks_trees">Parks &amp; Trees</option>
-      <option value="homelessness">Homelessness</option>
-      <option value="pests_health">Pests &amp; Health</option>
-      <option value="other">Other</option>
-    </select>
-    <span class="sep">|</span>
-    <div class="range-group" id="range-group">
-      <button class="range-btn active" data-range="prediction">Prediction</button>
-      <button class="range-btn" data-range="4w">4 wks</button>
-      <button class="range-btn" data-range="13w">13 wks</button>
-      <button class="range-btn" data-range="52w">52 wks</button>
-      <button class="range-btn" data-range="all">All time</button>
+  <span class="wordmark">NYC <em>311</em> Forecast</span>
+  <div class="hdivider"></div>
+  <select id="metric-select">
+    <option value="total">Total Calls</option>
+    <option value="noise">Noise</option>
+    <option value="parking_vehicles">Parking &amp; Vehicles</option>
+    <option value="heat_hot_water">Heat &amp; Hot Water</option>
+    <option value="housing_conditions">Housing Conditions</option>
+    <option value="streets_traffic">Streets &amp; Traffic</option>
+    <option value="sanitation_trash">Sanitation &amp; Trash</option>
+    <option value="water_sewer">Water &amp; Sewer</option>
+    <option value="parks_trees">Parks &amp; Trees</option>
+    <option value="homelessness">Homelessness</option>
+    <option value="pests_health">Pests &amp; Health</option>
+    <option value="other">Other</option>
+  </select>
+  <div class="hdivider"></div>
+  <button id="pred-btn">Prediction</button>
+  <div class="hdivider"></div>
+  <div class="slider-wrap" id="slider-wrap">
+    <span class="range-label" id="range-start">—</span>
+    <div class="slider-track" id="slider-track">
+      <div class="slider-fill"  id="slider-fill"></div>
+      <div class="slider-thumb" id="thumb-lo"></div>
+      <div class="slider-thumb" id="thumb-hi"></div>
     </div>
+    <span class="range-label" id="range-end">—</span>
   </div>
   <span id="updated"></span>
 </header>
@@ -193,17 +279,19 @@ select:focus { border-color: var(--blue); }
 <div id="map-wrap">
   <div id="map"></div>
 
-  <div class="info-panel" id="info-panel">
-    <h4>District</h4>
-    <div class="info-default">Hover over a district</div>
+  <div class="card" id="info-card">
+    <div class="card-eyebrow">District</div>
+    <div id="info-board">—</div>
+    <div id="info-value">Hover to explore</div>
+    <div id="info-sub"></div>
   </div>
 
-  <div class="legend">
-    <h4>Call Volume</h4>
+  <div class="card" id="legend-card">
+    <div class="card-eyebrow">Call Volume</div>
     <div class="gradient-bar"></div>
     <div class="gradient-labels">
-      <span id="legend-min">0</span>
-      <span id="legend-max">—</span>
+      <span id="leg-min">0</span>
+      <span id="leg-max">—</span>
     </div>
   </div>
 </div>
@@ -218,56 +306,22 @@ function boardKey(boro_cd) {
 
 function lerp(a, b, t) { return a + t * (b - a); }
 
-function interpolateColor(t) {
-  const blue  = [0x25, 0x63, 0xeb];
-  const orange = [0xf9, 0x73, 0x16];
-  const r = Math.round(lerp(blue[0], orange[0], t));
-  const g = Math.round(lerp(blue[1], orange[1], t));
-  const b = Math.round(lerp(blue[2], orange[2], t));
-  return `rgb(${r},${g},${b})`;
+function colorFor(val, min, max) {
+  if (val == null) return "var(--missing)";
+  const t = max > min ? Math.max(0, Math.min(1, (val - min) / (max - min))) : 0.5;
+  return `rgb(${Math.round(lerp(0x25,0xf9,t))},${Math.round(lerp(0x63,0x73,t))},${Math.round(lerp(0xeb,0x16,t))})`;
 }
 
-function valueColor(val, min, max) {
-  if (val == null) return "#1e293b";
-  const t = max > min ? (val - min) / (max - min) : 0.5;
-  return interpolateColor(t);
+function fmtWeek(w) {
+  return new Date(w + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function fmt(n) {
-  return n == null ? "no data" : n.toLocaleString() + " calls";
-}
-
-function aggregateValues(data, metric, range) {
-  if (range === "prediction") {
-    if (metric !== "total") {
-      return Object.fromEntries(data.boards.map(b => [b, null]));
-    }
-    return data.prediction.total;
-  }
-
-  const cutoffMs = {
-    "4w":  28  * 86400e3,
-    "13w": 91  * 86400e3,
-    "52w": 364 * 86400e3,
-    "all": Infinity,
-  }[range];
-
-  const now = Date.now();
-  const series = data.series[metric];
-  const result = {};
-
-  for (const board of data.boards) {
-    const vals = series[board];
-    let total = 0, hasData = false;
-    for (let i = 0; i < data.weeks.length; i++) {
-      const weekMs = new Date(data.weeks[i] + "T00:00:00").getTime();
-      if (now - weekMs > cutoffMs) continue;
-      if (vals[i] != null) { total += vals[i]; hasData = true; }
-    }
-    result[board] = hasData ? total : null;
-  }
-  return result;
-}
+let appData = null;
+let geoData = null;
+let geoLayer = null;
+let loIdx = 0;
+let hiIdx = 0;
+let isPred = false;
 
 const map = L.map("map", {
   center: [40.70, -73.94],
@@ -279,30 +333,43 @@ const map = L.map("map", {
   { subdomains: "abcd" }
 ));
 
-let geoLayer = null;
-let appData = null;
-let geoData = null;
+function computeValues() {
+  const metric = document.getElementById("metric-select").value;
+  if (isPred) {
+    if (metric !== "total") return null;
+    return appData.prediction.total;
+  }
+  const series = appData.series[metric];
+  if (!series) return null;
+  const result = {};
+  for (const board of appData.boards) {
+    const vals = series[board];
+    let total = 0, hasData = false;
+    for (let i = loIdx; i <= hiIdx; i++) {
+      if (vals[i] != null) { total += vals[i]; hasData = true; }
+    }
+    result[board] = hasData ? total : null;
+  }
+  return result;
+}
 
 function render() {
   if (!appData || !geoData) return;
 
-  const metric = document.getElementById("metric-select").value;
-  const range  = document.querySelector(".range-btn.active").dataset.range;
-
-  if (range === "prediction" && metric !== "total") {
-    document.querySelector(".range-btn.active").classList.remove("active");
-    document.querySelector('[data-range="4w"]').classList.add("active");
-    render();
-    return;
+  let values = computeValues();
+  if (!values) {
+    isPred = false;
+    document.getElementById("pred-btn").classList.remove("active");
+    document.getElementById("slider-wrap").classList.remove("pred-active");
+    values = computeValues();
   }
 
-  const values = aggregateValues(appData, metric, range);
   const nums = Object.values(values).filter(v => v != null);
   const min = nums.length ? Math.min(...nums) : 0;
   const max = nums.length ? Math.max(...nums) : 1;
 
-  document.getElementById("legend-min").textContent = min.toLocaleString();
-  document.getElementById("legend-max").textContent = max.toLocaleString();
+  document.getElementById("leg-min").textContent = min.toLocaleString();
+  document.getElementById("leg-max").textContent = max.toLocaleString();
 
   if (geoLayer) map.removeLayer(geoLayer);
 
@@ -310,44 +377,111 @@ function render() {
     style(feature) {
       const key = boardKey(feature.properties.boro_cd);
       return {
-        fillColor: valueColor(values[key], min, max),
+        fillColor: colorFor(values[key] ?? null, min, max),
         fillOpacity: 0.85,
         weight: 0.75,
-        color: "#0f172a",
+        color: "#090e1a",
       };
     },
     onEachFeature(feature, layer) {
       const key = boardKey(feature.properties.boro_cd);
-      const val = values[key] ?? null;
 
       layer.on("mouseover", () => {
         layer.setStyle({ weight: 2, fillOpacity: 1, color: "#fff" });
-        const panel = document.getElementById("info-panel");
-        panel.innerHTML = `
-          <h4>District</h4>
-          <div class="info-board">${key}</div>
-          <div class="info-value">${fmt(val)}</div>
-        `;
+        const val = values[key] ?? null;
+        const metricLabel = document.getElementById("metric-select").selectedOptions[0].text;
+        const rangeLabel = isPred
+          ? "Week of " + appData.prediction.week_start
+          : fmtWeek(appData.weeks[loIdx]) + (loIdx !== hiIdx ? " – " + fmtWeek(appData.weeks[hiIdx]) : "");
+        document.getElementById("info-board").textContent = key;
+        document.getElementById("info-value").textContent = val != null ? val.toLocaleString() : "no data";
+        document.getElementById("info-value").style.color = val != null ? "var(--text)" : "var(--muted)";
+        document.getElementById("info-sub").textContent = val != null ? metricLabel + " · " + rangeLabel : "";
       });
 
       layer.on("mouseout", () => {
         geoLayer.resetStyle(layer);
-        const panel = document.getElementById("info-panel");
-        panel.innerHTML = `<h4>District</h4><div class="info-default">Hover over a district</div>`;
+        document.getElementById("info-board").textContent = "—";
+        document.getElementById("info-value").textContent = "Hover to explore";
+        document.getElementById("info-value").style.color = "var(--muted)";
+        document.getElementById("info-sub").textContent = "";
       });
     },
   }).addTo(map);
 }
 
-document.getElementById("metric-select").addEventListener("change", render);
+function updateSliderUI() {
+  const N = appData.weeks.length - 1;
+  const lo = loIdx / N * 100;
+  const hi = hiIdx / N * 100;
+  document.getElementById("thumb-lo").style.left = lo + "%";
+  document.getElementById("thumb-hi").style.left = hi + "%";
+  document.getElementById("slider-fill").style.left  = lo + "%";
+  document.getElementById("slider-fill").style.width = (hi - lo) + "%";
+  document.getElementById("range-start").textContent = fmtWeek(appData.weeks[loIdx]);
+  document.getElementById("range-end").textContent   = fmtWeek(appData.weeks[hiIdx]);
+}
 
-document.getElementById("range-group").addEventListener("click", e => {
-  const btn = e.target.closest(".range-btn");
-  if (!btn) return;
-  document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
+function deactivatePred() {
+  isPred = false;
+  document.getElementById("pred-btn").classList.remove("active");
+  document.getElementById("slider-wrap").classList.remove("pred-active");
+}
+
+function initSlider() {
+  const N = appData.weeks.length - 1;
+  loIdx = N;
+  hiIdx = N;
+
+  const track = document.getElementById("slider-track");
+
+  function posToIdx(clientX) {
+    const rect = track.getBoundingClientRect();
+    return Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * N);
+  }
+
+  function setupThumb(thumb, isLo) {
+    thumb.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      thumb.setPointerCapture(e.pointerId);
+      function onMove(e) {
+        const idx = posToIdx(e.clientX);
+        if (isLo) loIdx = Math.min(idx, hiIdx);
+        else      hiIdx = Math.max(idx, loIdx);
+        deactivatePred();
+        updateSliderUI();
+        render();
+      }
+      function onUp() { thumb.removeEventListener("pointermove", onMove); }
+      thumb.addEventListener("pointermove", onMove);
+      thumb.addEventListener("pointerup", onUp, { once: true });
+    });
+  }
+
+  setupThumb(document.getElementById("thumb-lo"), true);
+  setupThumb(document.getElementById("thumb-hi"), false);
+
+  track.addEventListener("pointerdown", e => {
+    if (e.target.classList.contains("slider-thumb")) return;
+    const idx = posToIdx(e.clientX);
+    if (Math.abs(idx - loIdx) <= Math.abs(idx - hiIdx)) loIdx = Math.min(idx, hiIdx);
+    else hiIdx = Math.max(idx, loIdx);
+    deactivatePred();
+    updateSliderUI();
+    render();
+  });
+
+  updateSliderUI();
+}
+
+document.getElementById("pred-btn").addEventListener("click", () => {
+  isPred = !isPred;
+  document.getElementById("pred-btn").classList.toggle("active", isPred);
+  document.getElementById("slider-wrap").classList.toggle("pred-active", isPred);
   render();
 });
+
+document.getElementById("metric-select").addEventListener("change", render);
 
 Promise.all([
   fetch("data/latest.json").then(r => r.json()),
@@ -356,6 +490,7 @@ Promise.all([
   appData = data;
   geoData = geo;
   document.getElementById("updated").textContent = "Updated " + data.updated;
+  initSlider();
   render();
 }).catch(err => console.error("Failed to load dashboard data:", err));
 </script>
