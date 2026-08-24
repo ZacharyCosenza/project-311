@@ -27,3 +27,7 @@ tweet_delta_summary_text:
 tweet_daily_text:
   type: text.TextDataset
   filepath: data/dev/02_reporting/tweet_daily.txt
+
+dashboard_json:
+  type: text.TextDataset
+  filepath: dashboard/data/latest.json

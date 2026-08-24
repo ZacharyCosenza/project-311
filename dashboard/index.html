@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NYC 311 Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<style>
+:root {
+  --blue: #2563eb;
+  --orange: #f97316;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+h1 {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+h1 span { color: var(--orange); }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  outline: none;
+}
+
+select:focus { border-color: var(--blue); }
+
+.sep { color: var(--border); font-size: 1.2rem; }
+
+.range-group { display: flex; gap: 0.25rem; }
+
+.range-btn {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s;
+}
+
+.range-btn:hover { color: var(--text); border-color: var(--blue); }
+.range-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+#updated {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#map-wrap { flex: 1; position: relative; min-height: 0; }
+#map { width: 100%; height: 100%; background: var(--bg); }
+
+.leaflet-container { background: var(--bg); }
+
+.info-panel {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  z-index: 1000;
+  min-width: 160px;
+}
+
+.info-panel h4 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.info-board { color: var(--orange); font-weight: 600; margin-bottom: 0.15rem; }
+.info-value { font-size: 1rem; font-weight: 600; }
+.info-default { color: var(--muted); }
+
+.legend {
+  position: absolute;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  z-index: 1000;
+  font-size: 0.75rem;
+}
+
+.legend h4 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.gradient-bar {
+  width: 140px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--blue), var(--orange));
+  margin-bottom: 0.35rem;
+}
+
+.gradient-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NYC <span>311</span> Forecast</h1>
+  <div class="controls">
+    <select id="metric-select">
+      <option value="total">Total Calls</option>
+      <option value="noise">Noise</option>
+      <option value="parking_vehicles">Parking &amp; Vehicles</option>
+      <option value="heat_hot_water">Heat &amp; Hot Water</option>
+      <option value="housing_conditions">Housing Conditions</option>
+      <option value="streets_traffic">Streets &amp; Traffic</option>
+      <option value="sanitation_trash">Sanitation &amp; Trash</option>
+      <option value="water_sewer">Water &amp; Sewer</option>
+      <option value="parks_trees">Parks &amp; Trees</option>
+      <option value="homelessness">Homelessness</option>
+      <option value="pests_health">Pests &amp; Health</option>
+      <option value="other">Other</option>
+    </select>
+    <span class="sep">|</span>
+    <div class="range-group" id="range-group">
+      <button class="range-btn active" data-range="prediction">Prediction</button>
+      <button class="range-btn" data-range="4w">4 wks</button>
+      <button class="range-btn" data-range="13w">13 wks</button>
+      <button class="range-btn" data-range="52w">52 wks</button>
+      <button class="range-btn" data-range="all">All time</button>
+    </div>
+  </div>
+  <span id="updated"></span>
+</header>
+
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <div class="info-panel" id="info-panel">
+    <h4>District</h4>
+    <div class="info-default">Hover over a district</div>
+  </div>
+
+  <div class="legend">
+    <h4>Call Volume</h4>
+    <div class="gradient-bar"></div>
+    <div class="gradient-labels">
+      <span id="legend-min">0</span>
+      <span id="legend-max">—</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const BORO_NAMES = { "1": "MANHATTAN", "2": "BRONX", "3": "BROOKLYN", "4": "QUEENS", "5": "STATEN ISLAND" };
+
+function boardKey(boro_cd) {
+  const s = String(boro_cd);
+  return s.slice(1).padStart(2, "0") + " " + BORO_NAMES[s[0]];
+}
+
+function lerp(a, b, t) { return a + t * (b - a); }
+
+function interpolateColor(t) {
+  const blue  = [0x25, 0x63, 0xeb];
+  const orange = [0xf9, 0x73, 0x16];
+  const r = Math.round(lerp(blue[0], orange[0], t));
+  const g = Math.round(lerp(blue[1], orange[1], t));
+  const b = Math.round(lerp(blue[2], orange[2], t));
+  return `rgb(${r},${g},${b})`;
+}
+
+function valueColor(val, min, max) {
+  if (val == null) return "#1e293b";
+  const t = max > min ? (val - min) / (max - min) : 0.5;
+  return interpolateColor(t);
+}
+
+function fmt(n) {
+  return n == null ? "no data" : n.toLocaleString() + " calls";
+}
+
+function aggregateValues(data, metric, range) {
+  if (range === "prediction") {
+    if (metric !== "total") {
+      return Object.fromEntries(data.boards.map(b => [b, null]));
+    }
+    return data.prediction.total;
+  }
+
+  const cutoffMs = {
+    "4w":  28  * 86400e3,
+    "13w": 91  * 86400e3,
+    "52w": 364 * 86400e3,
+    "all": Infinity,
+  }[range];
+
+  const now = Date.now();
+  const series = data.series[metric];
+  const result = {};
+
+  for (const board of data.boards) {
+    const vals = series[board];
+    let total = 0, hasData = false;
+    for (let i = 0; i < data.weeks.length; i++) {
+      const weekMs = new Date(data.weeks[i] + "T00:00:00").getTime();
+      if (now - weekMs > cutoffMs) continue;
+      if (vals[i] != null) { total += vals[i]; hasData = true; }
+    }
+    result[board] = hasData ? total : null;
+  }
+  return result;
+}
+
+const map = L.map("map", {
+  center: [40.70, -73.94],
+  zoom: 11,
+  zoomControl: true,
+  attributionControl: false,
+}).addLayer(L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  { subdomains: "abcd" }
+));
+
+let geoLayer = null;
+let appData = null;
+let geoData = null;
+
+function render() {
+  if (!appData || !geoData) return;
+
+  const metric = document.getElementById("metric-select").value;
+  const range  = document.querySelector(".range-btn.active").dataset.range;
+
+  if (range === "prediction" && metric !== "total") {
+    document.querySelector(".range-btn.active").classList.remove("active");
+    document.querySelector('[data-range="4w"]').classList.add("active");
+    render();
+    return;
+  }
+
+  const values = aggregateValues(appData, metric, range);
+  const nums = Object.values(values).filter(v => v != null);
+  const min = nums.length ? Math.min(...nums) : 0;
+  const max = nums.length ? Math.max(...nums) : 1;
+
+  document.getElementById("legend-min").textContent = min.toLocaleString();
+  document.getElementById("legend-max").textContent = max.toLocaleString();
+
+  if (geoLayer) map.removeLayer(geoLayer);
+
+  geoLayer = L.geoJSON(geoData, {
+    style(feature) {
+      const key = boardKey(feature.properties.boro_cd);
+      return {
+        fillColor: valueColor(values[key], min, max),
+        fillOpacity: 0.85,
+        weight: 0.75,
+        color: "#0f172a",
+      };
+    },
+    onEachFeature(feature, layer) {
+      const key = boardKey(feature.properties.boro_cd);
+      const val = values[key] ?? null;
+
+      layer.on("mouseover", () => {
+        layer.setStyle({ weight: 2, fillOpacity: 1, color: "#fff" });
+        const panel = document.getElementById("info-panel");
+        panel.innerHTML = `
+          <h4>District</h4>
+          <div class="info-board">${key}</div>
+          <div class="info-value">${fmt(val)}</div>
+        `;
+      });
+
+      layer.on("mouseout", () => {
+        geoLayer.resetStyle(layer);
+        const panel = document.getElementById("info-panel");
+        panel.innerHTML = `<h4>District</h4><div class="info-default">Hover over a district</div>`;
+      });
+    },
+  }).addTo(map);
+}
+
+document.getElementById("metric-select").addEventListener("change", render);
+
+document.getElementById("range-group").addEventListener("click", e => {
+  const btn = e.target.closest(".range-btn");
+  if (!btn) return;
+  document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  render();
+});
+
+Promise.all([
+  fetch("data/latest.json").then(r => r.json()),
+  fetch("data/districts.geojson").then(r => r.json()),
+]).then(([data, geo]) => {
+  appData = data;
+  geoData = geo;
+  document.getElementById("updated").textContent = "Updated " + data.updated;
+  render();
+}).catch(err => console.error("Failed to load dashboard data:", err));
+</script>
+</body>
+</html>
