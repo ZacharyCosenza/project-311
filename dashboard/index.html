@@ -51,8 +51,7 @@ header {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0 1.25rem;
-  height: 52px;
+  padding: 0.55rem 1.25rem 0.5rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -65,10 +64,11 @@ header {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .wordmark em { font-style: normal; color: var(--orange); }
 
-.hdivider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.hdivider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; align-self: center; }
 
 select {
   background: transparent;
@@ -82,55 +82,25 @@ select {
   cursor: pointer;
   outline: none;
   flex-shrink: 0;
+  align-self: center;
 }
 select:hover, select:focus { border-color: var(--blue); }
 select option { background: var(--surface); }
 
-#pred-btn {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 0.3rem 0.65rem;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: color 0.1s, border-color 0.1s, background 0.1s;
-}
-#pred-btn:hover { color: var(--text); border-color: var(--blue); }
-#pred-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
-
-.slider-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
+.slider-area {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
 }
-
-.range-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-  min-width: 72px;
-}
-#range-start { text-align: right; }
 
 .slider-track {
   position: relative;
   height: 4px;
   background: var(--border);
   border-radius: 2px;
-  flex: 1;
   cursor: pointer;
-  min-width: 80px;
   user-select: none;
 }
 
@@ -140,7 +110,6 @@ select option { background: var(--surface); }
   background: var(--blue);
   border-radius: 2px;
   pointer-events: none;
-  transition: background 0.2s;
 }
 
 .slider-thumb {
@@ -154,26 +123,20 @@ select option { background: var(--surface); }
   transform: translate(-50%, -50%);
   cursor: grab;
   z-index: 2;
-  transition: background 0.15s;
   touch-action: none;
+  transition: background 0.12s;
 }
 .slider-thumb:hover { background: var(--orange); }
-.slider-thumb:active { cursor: grabbing; }
+.slider-thumb.dragging { cursor: grabbing; background: var(--orange); }
 
-.slider-wrap.pred-active .slider-fill { background: var(--border); }
-.slider-wrap.pred-active .slider-thumb { background: var(--border); pointer-events: none; }
-.slider-wrap.pred-active .slider-track { cursor: default; }
-
-#updated {
-  margin-left: auto;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.7rem;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+.slider-dates {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.67rem;
   color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 #map-wrap { flex: 1; position: relative; min-height: 0; }
@@ -199,7 +162,7 @@ select option { background: var(--surface); }
   margin-bottom: 0.45rem;
 }
 
-#info-card { bottom: 1.25rem; left: 1.25rem; min-width: 165px; }
+#info-card { top: 1.25rem; left: 1.25rem; min-width: 160px; }
 
 #info-board {
   font-family: 'Barlow Condensed', sans-serif;
@@ -220,7 +183,7 @@ select option { background: var(--surface); }
   color: var(--muted);
 }
 
-#info-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; min-height: 1rem; }
+#info-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem; min-height: 0.9rem; }
 
 #legend-card { bottom: 1.25rem; right: 1.25rem; }
 
@@ -239,6 +202,16 @@ select option { background: var(--surface); }
   font-size: 0.68rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+#legend-updated {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 0.5rem;
 }
 </style>
 </head>
@@ -262,18 +235,17 @@ select option { background: var(--surface); }
     <option value="other">Other</option>
   </select>
   <div class="hdivider"></div>
-  <button id="pred-btn">Prediction</button>
-  <div class="hdivider"></div>
-  <div class="slider-wrap" id="slider-wrap">
-    <span class="range-label" id="range-start">—</span>
+  <div class="slider-area">
     <div class="slider-track" id="slider-track">
       <div class="slider-fill"  id="slider-fill"></div>
       <div class="slider-thumb" id="thumb-lo"></div>
       <div class="slider-thumb" id="thumb-hi"></div>
     </div>
-    <span class="range-label" id="range-end">—</span>
+    <div class="slider-dates">
+      <span id="range-start">—</span>
+      <span id="range-end">—</span>
+    </div>
   </div>
-  <span id="updated"></span>
 </header>
 
 <div id="map-wrap">
@@ -293,6 +265,7 @@ select option { background: var(--surface); }
       <span id="leg-min">0</span>
       <span id="leg-max">—</span>
     </div>
+    <div id="legend-updated"></div>
   </div>
 </div>
 
@@ -321,7 +294,6 @@ let geoData = null;
 let geoLayer = null;
 let loIdx = 0;
 let hiIdx = 0;
-let isPred = false;
 
 const map = L.map("map", {
   center: [40.70, -73.94],
@@ -335,12 +307,8 @@ const map = L.map("map", {
 
 function computeValues() {
   const metric = document.getElementById("metric-select").value;
-  if (isPred) {
-    if (metric !== "total") return null;
-    return appData.prediction.total;
-  }
   const series = appData.series[metric];
-  if (!series) return null;
+  if (!series) return {};
   const result = {};
   for (const board of appData.boards) {
     const vals = series[board];
@@ -356,14 +324,7 @@ function computeValues() {
 function render() {
   if (!appData || !geoData) return;
 
-  let values = computeValues();
-  if (!values) {
-    isPred = false;
-    document.getElementById("pred-btn").classList.remove("active");
-    document.getElementById("slider-wrap").classList.remove("pred-active");
-    values = computeValues();
-  }
-
+  const values = computeValues();
   const nums = Object.values(values).filter(v => v != null);
   const min = nums.length ? Math.min(...nums) : 0;
   const max = nums.length ? Math.max(...nums) : 1;
@@ -390,9 +351,9 @@ function render() {
         layer.setStyle({ weight: 2, fillOpacity: 1, color: "#fff" });
         const val = values[key] ?? null;
         const metricLabel = document.getElementById("metric-select").selectedOptions[0].text;
-        const rangeLabel = isPred
-          ? "Week of " + appData.prediction.week_start
-          : fmtWeek(appData.weeks[loIdx]) + (loIdx !== hiIdx ? " – " + fmtWeek(appData.weeks[hiIdx]) : "");
+        const rangeLabel = loIdx === hiIdx
+          ? fmtWeek(appData.weeks[loIdx])
+          : fmtWeek(appData.weeks[loIdx]) + " – " + fmtWeek(appData.weeks[hiIdx]);
         document.getElementById("info-board").textContent = key;
         document.getElementById("info-value").textContent = val != null ? val.toLocaleString() : "no data";
         document.getElementById("info-value").style.color = val != null ? "var(--text)" : "var(--muted)";
@@ -411,9 +372,9 @@ function render() {
 }
 
 function updateSliderUI() {
-  const N = appData.weeks.length - 1;
-  const lo = loIdx / N * 100;
-  const hi = hiIdx / N * 100;
+  const N = appData.weeks.length;
+  const lo = loIdx / (N - 1) * 100;
+  const hi = hiIdx / (N - 1) * 100;
   document.getElementById("thumb-lo").style.left = lo + "%";
   document.getElementById("thumb-hi").style.left = hi + "%";
   document.getElementById("slider-fill").style.left  = lo + "%";
@@ -422,64 +383,83 @@ function updateSliderUI() {
   document.getElementById("range-end").textContent   = fmtWeek(appData.weeks[hiIdx]);
 }
 
-function deactivatePred() {
-  isPred = false;
-  document.getElementById("pred-btn").classList.remove("active");
-  document.getElementById("slider-wrap").classList.remove("pred-active");
-}
-
 function initSlider() {
-  const N = appData.weeks.length - 1;
-  loIdx = N;
-  hiIdx = N;
+  const N = appData.weeks.length;
+  loIdx = Math.max(0, N - 14);
+  hiIdx = N - 1;
 
   const track = document.getElementById("slider-track");
 
   function posToIdx(clientX) {
     const rect = track.getBoundingClientRect();
-    return Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * N);
+    return Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (N - 1));
   }
 
-  function setupThumb(thumb, isLo) {
-    thumb.addEventListener("pointerdown", e => {
+  function makeDraggable(thumb, isLo) {
+    thumb.addEventListener("mousedown", e => {
       e.preventDefault();
-      thumb.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+      thumb.classList.add("dragging");
+
       function onMove(e) {
         const idx = posToIdx(e.clientX);
         if (isLo) loIdx = Math.min(idx, hiIdx);
         else      hiIdx = Math.max(idx, loIdx);
-        deactivatePred();
         updateSliderUI();
         render();
       }
-      function onUp() { thumb.removeEventListener("pointermove", onMove); }
-      thumb.addEventListener("pointermove", onMove);
-      thumb.addEventListener("pointerup", onUp, { once: true });
+
+      function onUp() {
+        thumb.classList.remove("dragging");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
     });
+
+    thumb.addEventListener("touchstart", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      thumb.classList.add("dragging");
+
+      function onMove(e) {
+        const idx = posToIdx(e.touches[0].clientX);
+        if (isLo) loIdx = Math.min(idx, hiIdx);
+        else      hiIdx = Math.max(idx, loIdx);
+        updateSliderUI();
+        render();
+      }
+
+      function onEnd() {
+        thumb.classList.remove("dragging");
+        document.removeEventListener("touchmove", onMove);
+        document.removeEventListener("touchend", onEnd);
+      }
+
+      document.addEventListener("touchmove", onMove, { passive: false });
+      document.addEventListener("touchend", onEnd);
+    }, { passive: false });
   }
 
-  setupThumb(document.getElementById("thumb-lo"), true);
-  setupThumb(document.getElementById("thumb-hi"), false);
+  makeDraggable(document.getElementById("thumb-lo"), true);
+  makeDraggable(document.getElementById("thumb-hi"), false);
 
-  track.addEventListener("pointerdown", e => {
-    if (e.target.classList.contains("slider-thumb")) return;
+  track.addEventListener("mousedown", e => {
+    if (e.target !== track && e.target.id !== "slider-fill") return;
+    e.preventDefault();
     const idx = posToIdx(e.clientX);
-    if (Math.abs(idx - loIdx) <= Math.abs(idx - hiIdx)) loIdx = Math.min(idx, hiIdx);
-    else hiIdx = Math.max(idx, loIdx);
-    deactivatePred();
+    const dLo = Math.abs(idx - loIdx);
+    const dHi = Math.abs(idx - hiIdx);
+    if (dLo <= dHi) loIdx = Math.min(idx, hiIdx);
+    else             hiIdx = Math.max(idx, loIdx);
     updateSliderUI();
     render();
   });
 
   updateSliderUI();
 }
-
-document.getElementById("pred-btn").addEventListener("click", () => {
-  isPred = !isPred;
-  document.getElementById("pred-btn").classList.toggle("active", isPred);
-  document.getElementById("slider-wrap").classList.toggle("pred-active", isPred);
-  render();
-});
 
 document.getElementById("metric-select").addEventListener("change", render);
 
@@ -489,7 +469,7 @@ Promise.all([
 ]).then(([data, geo]) => {
   appData = data;
   geoData = geo;
-  document.getElementById("updated").textContent = "Updated " + data.updated;
+  document.getElementById("legend-updated").textContent = "Updated " + data.updated;
   initSlider();
   render();
 }).catch(err => console.error("Failed to load dashboard data:", err));
