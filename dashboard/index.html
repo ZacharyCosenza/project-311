@@ -354,12 +354,9 @@ function render() {
 
   geoLayer.eachLayer(layer => {
     const key = boardKey(layer.feature.properties.boro_cd);
-    layer.setStyle({
-      fillColor: colorFor(values[key] ?? null, min, max),
-      fillOpacity: 0.85,
-      weight: 0.75,
-      color: "#090e1a",
-    });
+    const fill = colorFor(values[key] ?? null, min, max);
+    layer.setStyle({ fillColor: fill, fillOpacity: 0.85, weight: 0.75, color: "#090e1a" });
+    layer._fill = fill;
     layer._vals = values;
   });
 }
@@ -385,7 +382,7 @@ function buildGeoLayer() {
         document.getElementById("info-sub").textContent = val != null ? metricLabel + " · " + rangeLabel : "";
       });
       layer.on("mouseout", () => {
-        geoLayer.resetStyle(layer);
+        layer.setStyle({ fillColor: layer._fill || "var(--missing)", fillOpacity: 0.85, weight: 0.75, color: "#090e1a" });
         document.getElementById("info-board").textContent = "—";
         document.getElementById("info-value").textContent = "Hover to explore";
         document.getElementById("info-value").style.color = "var(--muted)";
