@@ -18,19 +18,25 @@ GitHub Actions                                   │
   CI: pytest                                      ├─ k3d cluster "prod-311"
   CD: docker build → GHCR                          │   (k3s-in-docker, 1 node)
         ghcr.io/zacharycosenza/modeling:latest      │   └─ ns: argo
-  │                                                 │       ├─ CronWorkflows (train/
-  │  (image pulled by pods on next scheduled run)   │       │   inference/tweet-*)
-  ▼                                                 │       └─ argo-server (UI)
-  ...cluster pulls :latest...  ◄────────────────────┘             │
-                                                                   ├─ port-forwarded to
-                                                    kubectl apply ─┤   127.0.0.1:2746
-                                                    (manual, see    │  (systemd unit)
-                                                     "Deploying                │
-                                                     changes" below)           ▼
-                                                                   tailscale serve
-                                                                   → https://desktop-fpi4cha.tailf82cf9.ts.net
+  Pages: deploy dashboard/ → GitHub Pages          │       ├─ CronWorkflows (train/
+  │                                                 │       │   inference/tweet-*)
+  │  (image pulled by pods on next scheduled run)   │       └─ argo-server (UI)
+  ▼                                                 │             │
+  ...cluster pulls :latest...  ◄────────────────────┘             ├─ port-forwarded to
+                                                                   │   127.0.0.1:2746
+                                                    kubectl apply ─┤   (systemd unit)
+                                                    (manual, see    │
+                                                     "Deploying     ▼
+                                                     changes"  tailscale serve
+                                                     below)    → https://desktop-fpi4cha.tailf82cf9.ts.net
                                                     mlflow ui process (separate,
                                                     see mlflow.md)
+
+GitHub Pages (public)
+  https://zacharycosenza.github.io/project-311/
+  Served from dashboard/ on main branch, deployed by pages.yml on every
+  push that touches dashboard/. Data updated by running the dashboard
+  Kedro pipeline after inference and pushing the new latest.json.
 ```
 
 Pods write artifacts directly to the desktop's local `data/` folder via a
@@ -133,6 +139,10 @@ deleted as part of that rollout.
 - `.github/workflows/cd.yml` — after CI passes on `main`, builds the Docker
   image and pushes `ghcr.io/zacharycosenza/modeling:latest` + `:<sha>`.
   CronWorkflows use `:latest`.
+- `.github/workflows/pages.yml` — deploys `dashboard/` to GitHub Pages
+  whenever a push to `main` touches that folder. Uses the official
+  `actions/deploy-pages` action with `enablement: true` so Pages doesn't
+  need to be pre-configured via the Settings UI.
 
 **Gotchas:**
 - GHCR image names must be lowercase; `github.repository_owner` preserves
@@ -145,6 +155,62 @@ deleted as part of that rollout.
   `CronWorkflow` pod is stuck in `ImagePullBackOff`).
 - Integration tests hit real external APIs (Socrata, Open-Meteo) — skipped
   in CI via `@pytest.mark.skipif(os.environ.get("CI") == "true", ...)`.
+
+## Dashboard (GitHub Pages)
+
+**URL:** `https://zacharycosenza.github.io/project-311/`
+
+A public choropleth map showing historical 311 call volume by NYC community
+board district. Metric dropdown (total + 11 call types) and a two-handle
+week-range slider that filters which weeks are summed on the map.
+
+### Files
+
+```
+dashboard/
+  index.html              # self-contained frontend (Leaflet, Barlow font)
+  data/
+    latest.json           # exported by the dashboard Kedro pipeline
+    districts.geojson     # NYC community board boundaries — static, committed once
+```
+
+`dashboard/data/` is committed and served directly by GitHub Pages. The
+`/data/` gitignore rule is anchored to the repo root (`/data/`) so it does
+not catch `dashboard/data/`.
+
+### Updating the data
+
+After inference runs, export fresh data and push:
+
+```bash
+# on the desktop, after the inference CronWorkflow completes
+cd ~/code/project-311
+KEDRO_ENV=prod kedro run --pipeline dashboard   # writes dashboard/data/latest.json
+git add dashboard/data/latest.json
+git commit -m "Dashboard data: <date>"
+git push origin main
+# → pages.yml triggers, site updates in ~30 seconds
+```
+
+The `dashboard` Kedro pipeline reads `modeling_data` and `inference_results`
+from the prod catalog and writes the JSON in one node (`export_dashboard_json`).
+It does not need the full inference pipeline to re-run — just the already-written
+parquet artifacts from the last inference run.
+
+### One-time GitHub setup
+
+The `pages.yml` workflow uses `enablement: true` on `actions/configure-pages`,
+which enables GitHub Pages automatically on the first run. If that fails
+(permissions), go to **Settings → Pages → Source → GitHub Actions** and save,
+then re-run the workflow from the Actions tab.
+
+### Wiring data export into the inference Argo workflow (future)
+
+Currently the dashboard data export is a manual step. The natural next step is
+adding a final template to `deploy/workflows/inference.yaml` that runs
+`kedro run --pipeline dashboard` and commits + pushes `latest.json` back to
+GitHub — this requires the pod to have a deploy key or PAT with `contents:
+write` scope mounted as a Secret. Not done yet.
 
 ## Deploy manifests
 
@@ -365,5 +431,7 @@ ls -la data/prod/02_reporting/            # directly, no kubectl needed — it's
 - [x] Argo Workflows UI exposed over Tailscale, no bearer token needed
 - [x] Split `inference`/`tweet-summary`/`tweet-daily` CronWorkflows applied to the cluster
 - [x] Java/Ivy fix (real uid-1000 passwd entry in the Dockerfile) and mlflow artifact-location fix both pushed, CD built + pushed `:latest` successfully — next `train`/`tweet-*` run pulls it automatically (`imagePullPolicy: Always`)
+- [x] `dashboard/` pipeline and GitHub Pages workflow committed to `main`; `latest.json` seeded from current prod inference run
+- [ ] Dashboard data export not yet wired into the inference Argo workflow — currently a manual `kedro run --pipeline dashboard` + git push after each Monday inference run
 - [ ] Argo CD not bootstrapped — all cluster changes are manual `kubectl apply`
 - [ ] `successfulJobsHistoryLimit`/`failedJobsHistoryLimit` unset on all CronWorkflows — old logs vanish once pods are GC'd
