@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NYC 311 Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@500;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<style>
+:root {
+  --bg:      #090e1a;
+  --surface: #111827;
+  --panel:   #152035;
+  --border:  #1e3150;
+  --text:    #d8e4f5;
+  --muted:   #617595;
+  --missing: #1a2a40;
+  --blue:    #2563eb;
+  --orange:  #f97316;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eef2fa; --surface: #ffffff; --panel: #f5f8fe;
+    --border: #c5d4ea; --text: #0d1b2e; --muted: #5a6d85; --missing: #d5dff0;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #eef2fa; --surface: #ffffff; --panel: #f5f8fe;
+  --border: #c5d4ea; --text: #0d1b2e; --muted: #5a6d85; --missing: #d5dff0;
+}
+:root[data-theme="dark"] {
+  --bg: #090e1a; --surface: #111827; --panel: #152035;
+  --border: #1e3150; --text: #d8e4f5; --muted: #617595; --missing: #1a2a40;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow', system-ui, sans-serif;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 1.25rem 0.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.wordmark {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.wordmark em { font-style: normal; color: var(--orange); }
+
+.hdivider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; align-self: center; }
+
+select {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.3rem 0.6rem;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  align-self: center;
+}
+select:hover, select:focus { border-color: var(--blue); }
+select option { background: var(--surface); }
+
+.slider-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.slider-track {
+  position: relative;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.slider-fill {
+  position: absolute;
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.slider-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--blue);
+  border: 2px solid var(--surface);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  z-index: 2;
+  touch-action: none;
+  transition: background 0.12s;
+}
+.slider-thumb:hover { background: var(--orange); }
+.slider-thumb.dragging { cursor: grabbing; background: var(--orange); }
+
+.slider-dates {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.67rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+#map-wrap { flex: 1; position: relative; min-height: 0; }
+#map { width: 100%; height: 100%; background: var(--bg); }
+.leaflet-container { background: var(--bg); }
+
+.card {
+  position: absolute;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  z-index: 1000;
+}
+
+.card-eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+
+#info-card { top: 1.25rem; left: 1.25rem; min-width: 160px; }
+
+#info-board {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.1rem;
+  min-height: 1.2rem;
+}
+
+#info-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--muted);
+}
+
+#info-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem; min-height: 0.9rem; }
+
+#legend-card { bottom: 1.25rem; right: 1.25rem; }
+
+.gradient-bar {
+  width: 150px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--blue), var(--orange));
+  margin-bottom: 0.35rem;
+}
+
+.gradient-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#legend-updated {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="wordmark">NYC <em>311</em> Dashboard</span>
+  <div class="hdivider"></div>
+  <select id="metric-select">
+    <option value="total">Total Calls</option>
+    <option value="noise">Noise</option>
+    <option value="parking_vehicles">Parking &amp; Vehicles</option>
+    <option value="heat_hot_water">Heat &amp; Hot Water</option>
+    <option value="housing_conditions">Housing Conditions</option>
+    <option value="streets_traffic">Streets &amp; Traffic</option>
+    <option value="sanitation_trash">Sanitation &amp; Trash</option>
+    <option value="water_sewer">Water &amp; Sewer</option>
+    <option value="parks_trees">Parks &amp; Trees</option>
+    <option value="homelessness">Homelessness</option>
+    <option value="pests_health">Pests &amp; Health</option>
+    <option value="other">Other</option>
+  </select>
+  <div class="hdivider"></div>
+  <div class="slider-area">
+    <div class="slider-track" id="slider-track">
+      <div class="slider-fill"  id="slider-fill"></div>
+      <div class="slider-thumb" id="thumb-lo"></div>
+      <div class="slider-thumb" id="thumb-hi"></div>
+    </div>
+    <div class="slider-dates">
+      <span id="range-start">—</span>
+      <span id="range-end">—</span>
+    </div>
+  </div>
+</header>
+
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <div class="card" id="info-card">
+    <div class="card-eyebrow">District</div>
+    <div id="info-board">—</div>
+    <div id="info-value">Hover to explore</div>
+    <div id="info-sub"></div>
+  </div>
+
+  <div class="card" id="legend-card">
+    <div class="card-eyebrow">Call Volume</div>
+    <div class="gradient-bar"></div>
+    <div class="gradient-labels">
+      <span id="leg-min">0</span>
+      <span id="leg-max">—</span>
+    </div>
+    <div id="legend-updated"></div>
+  </div>
+</div>
+
+<script>
+const BORO_NAMES = { "1": "MANHATTAN", "2": "BRONX", "3": "BROOKLYN", "4": "QUEENS", "5": "STATEN ISLAND" };
+
+function boardKey(boro_cd) {
+  const s = String(boro_cd);
+  return s.slice(1).padStart(2, "0") + " " + BORO_NAMES[s[0]];
+}
+
+function lerp(a, b, t) { return a + t * (b - a); }
+
+function colorFor(val, min, max) {
+  if (val == null) return "var(--missing)";
+  const t = max > min ? Math.max(0, Math.min(1, (val - min) / (max - min))) : 0.5;
+  return `rgb(${Math.round(lerp(0x25,0xf9,t))},${Math.round(lerp(0x63,0x73,t))},${Math.round(lerp(0xeb,0x16,t))})`;
+}
+
+function fmtWeek(w) {
+  return new Date(w + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+let appData = null;
+let geoData = null;
+let geoLayer = null;
+let loIdx = 0;
+let hiIdx = 0;
+
+const map = L.map("map", {
+  center: [40.70, -73.94],
+  zoom: 11,
+  zoomControl: true,
+  attributionControl: false,
+}).addLayer(L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  { subdomains: "abcd" }
+));
+
+function computeValues() {
+  const metric = document.getElementById("metric-select").value;
+  const series = appData.series[metric];
+  if (!series) return {};
+  const result = {};
+  for (const board of appData.boards) {
+    const vals = series[board];
+    let total = 0, hasData = false;
+    for (let i = loIdx; i <= hiIdx; i++) {
+      if (vals[i] != null) { total += vals[i]; hasData = true; }
+    }
+    result[board] = hasData ? total : null;
+  }
+  return result;
+}
+
+function render() {
+  if (!appData || !geoData) return;
+
+  const values = computeValues();
+  const nums = Object.values(values).filter(v => v != null);
+  const min = nums.length ? Math.min(...nums) : 0;
+  const max = nums.length ? Math.max(...nums) : 1;
+
+  document.getElementById("leg-min").textContent = min.toLocaleString();
+  document.getElementById("leg-max").textContent = max.toLocaleString();
+
+  if (geoLayer) map.removeLayer(geoLayer);
+
+  geoLayer = L.geoJSON(geoData, {
+    style(feature) {
+      const key = boardKey(feature.properties.boro_cd);
+      return {
+        fillColor: colorFor(values[key] ?? null, min, max),
+        fillOpacity: 0.85,
+        weight: 0.75,
+        color: "#090e1a",
+      };
+    },
+    onEachFeature(feature, layer) {
+      const key = boardKey(feature.properties.boro_cd);
+
+      layer.on("mouseover", () => {
+        layer.setStyle({ weight: 2, fillOpacity: 1, color: "#fff" });
+        const val = values[key] ?? null;
+        const metricLabel = document.getElementById("metric-select").selectedOptions[0].text;
+        const rangeLabel = loIdx === hiIdx
+          ? fmtWeek(appData.weeks[loIdx])
+          : fmtWeek(appData.weeks[loIdx]) + " – " + fmtWeek(appData.weeks[hiIdx]);
+        document.getElementById("info-board").textContent = key;
+        document.getElementById("info-value").textContent = val != null ? val.toLocaleString() : "no data";
+        document.getElementById("info-value").style.color = val != null ? "var(--text)" : "var(--muted)";
+        document.getElementById("info-sub").textContent = val != null ? metricLabel + " · " + rangeLabel : "";
+      });
+
+      layer.on("mouseout", () => {
+        geoLayer.resetStyle(layer);
+        document.getElementById("info-board").textContent = "—";
+        document.getElementById("info-value").textContent = "Hover to explore";
+        document.getElementById("info-value").style.color = "var(--muted)";
+        document.getElementById("info-sub").textContent = "";
+      });
+    },
+  }).addTo(map);
+}
+
+function updateSliderUI() {
+  const N = appData.weeks.length;
+  const lo = loIdx / (N - 1) * 100;
+  const hi = hiIdx / (N - 1) * 100;
+  document.getElementById("thumb-lo").style.left = lo + "%";
+  document.getElementById("thumb-hi").style.left = hi + "%";
+  document.getElementById("slider-fill").style.left  = lo + "%";
+  document.getElementById("slider-fill").style.width = (hi - lo) + "%";
+  document.getElementById("range-start").textContent = fmtWeek(appData.weeks[loIdx]);
+  document.getElementById("range-end").textContent   = fmtWeek(appData.weeks[hiIdx]);
+}
+
+function initSlider() {
+  const N = appData.weeks.length;
+  loIdx = Math.max(0, N - 14);
+  hiIdx = N - 1;
+
+  const track = document.getElementById("slider-track");
+
+  function posToIdx(clientX) {
+    const rect = track.getBoundingClientRect();
+    return Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (N - 1));
+  }
+
+  function makeDraggable(thumb, isLo) {
+    thumb.addEventListener("mousedown", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      thumb.classList.add("dragging");
+
+      function onMove(e) {
+        const idx = posToIdx(e.clientX);
+        if (isLo) loIdx = Math.min(idx, hiIdx);
+        else      hiIdx = Math.max(idx, loIdx);
+        updateSliderUI();
+        render();
+      }
+
+      function onUp() {
+        thumb.classList.remove("dragging");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+
+    thumb.addEventListener("touchstart", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      thumb.classList.add("dragging");
+
+      function onMove(e) {
+        const idx = posToIdx(e.touches[0].clientX);
+        if (isLo) loIdx = Math.min(idx, hiIdx);
+        else      hiIdx = Math.max(idx, loIdx);
+        updateSliderUI();
+        render();
+      }
+
+      function onEnd() {
+        thumb.classList.remove("dragging");
+        document.removeEventListener("touchmove", onMove);
+        document.removeEventListener("touchend", onEnd);
+      }
+
+      document.addEventListener("touchmove", onMove, { passive: false });
+      document.addEventListener("touchend", onEnd);
+    }, { passive: false });
+  }
+
+  makeDraggable(document.getElementById("thumb-lo"), true);
+  makeDraggable(document.getElementById("thumb-hi"), false);
+
+  track.addEventListener("mousedown", e => {
+    if (e.target !== track && e.target.id !== "slider-fill") return;
+    e.preventDefault();
+    const idx = posToIdx(e.clientX);
+    const dLo = Math.abs(idx - loIdx);
+    const dHi = Math.abs(idx - hiIdx);
+    if (dLo <= dHi) loIdx = Math.min(idx, hiIdx);
+    else             hiIdx = Math.max(idx, loIdx);
+    updateSliderUI();
+    render();
+  });
+
+  updateSliderUI();
+}
+
+document.getElementById("metric-select").addEventListener("change", render);
+
+Promise.all([
+  fetch("data/latest.json").then(r => r.json()),
+  fetch("data/districts.geojson").then(r => r.json()),
+]).then(([data, geo]) => {
+  appData = data;
+  geoData = geo;
+  document.getElementById("legend-updated").textContent = "Updated " + data.updated;
+  initSlider();
+  render();
+}).catch(err => console.error("Failed to load dashboard data:", err));
+</script>
+</body>
+</html>

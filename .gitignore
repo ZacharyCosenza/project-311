@@ -2,7 +2,7 @@
 conf/local/
 __pycache__/
 *.pyc
-data/
+/data/
 mlruns/
 .env
 .secrets/
