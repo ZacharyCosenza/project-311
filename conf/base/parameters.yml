@@ -60,6 +60,7 @@ mlflow_tweet_daily_experiment: "311-tweet-daily"
 
 # see compute_call_deltas / docs/delta-eda for what these three are tuned against
 delta_baseline_weeks: 4
+min_delta_baseline: 100
 outlier_z_threshold: 8.0
 outlier_min_corroborators: 5
 

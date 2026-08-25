@@ -104,11 +104,14 @@ def _winsorize_isolated_outliers(
 def compute_call_deltas(
     ranked_districts: pd.DataFrame, modeling_data: pd.DataFrame, target_col: str,
     delta_baseline_weeks: int, outlier_z_threshold: float, outlier_min_corroborators: int,
+    min_delta_baseline: float,
 ) -> pd.DataFrame:
     """delta_{target_col} = prediction minus each board's own trailing
     delta_baseline_weeks average of actual calls (4 weeks — the lowest-noise choice
     from a sensitivity sweep, see docs/delta-eda). delta_rank only ranks positive
-    deltas — a predicted decrease gets no rank at all, never a top-5 slot.
+    deltas for boards whose trailing baseline meets min_delta_baseline — boards below
+    that floor have near-zero baselines that turn any non-trivial prediction into a
+    spuriously huge absolute delta, dominating the ranking with noise.
     """
     pred_col = f"pred_{target_col}"
     delta_col = f"delta_{target_col}"
@@ -126,9 +129,9 @@ def compute_call_deltas(
     result = ranked_districts.copy()
     result[delta_col] = result[pred_col] - result["board_key"].map(baseline)
 
-    positive = result[delta_col] > 0
+    eligible = (result[delta_col] > 0) & (result["board_key"].map(baseline) >= min_delta_baseline)
     result["delta_rank"] = np.nan
-    result.loc[positive, "delta_rank"] = result.loc[positive, delta_col].rank(ascending=False, method="first")
+    result.loc[eligible, "delta_rank"] = result.loc[eligible, delta_col].rank(ascending=False, method="first")
     return result
 
 

@@ -111,6 +111,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             inputs=[
                 "ranked_districts", "modeling_data", "params:target_col",
                 "params:delta_baseline_weeks", "params:outlier_z_threshold", "params:outlier_min_corroborators",
+                "params:min_delta_baseline",
             ],
             outputs="districts_with_deltas",
             name="compute_call_deltas",
