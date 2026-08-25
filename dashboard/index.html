@@ -6,8 +6,8 @@
 <title>NYC 311 Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@500;700&family=JetBrains+Mono:wght@500&display=swap">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
 <style>
 :root {
   --bg:      #090e1a;
@@ -157,7 +157,6 @@ select option { background: var(--surface); }
   text-transform: uppercase;
   color: var(--muted);
   background: var(--bg);
-  pointer-events: none;
   transition: opacity 0.3s;
 }
 
@@ -308,11 +307,14 @@ function fmtWeek(w) {
   return new Date(w + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-let appData = null;
+let meta = null;
 let geoData = null;
 let geoLayer = null;
 let loIdx = 0;
 let hiIdx = 0;
+let boardIdx = {};         // boardKey → array index
+let currentSeries = null;  // loaded series for active metric
+const seriesCache = {};    // metric → series array
 
 const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 const tileTheme = prefersDark ? "dark_all" : "light_all";
@@ -327,23 +329,20 @@ const map = L.map("map", {
 ));
 
 function computeValues() {
-  const metric = document.getElementById("metric-select").value;
-  const series = appData.series[metric];
-  if (!series) return {};
   const result = {};
-  for (const board of appData.boards) {
-    const vals = series[board];
+  for (let bi = 0; bi < meta.boards.length; bi++) {
+    const vals = currentSeries[bi];
     let total = 0, hasData = false;
     for (let i = loIdx; i <= hiIdx; i++) {
       if (vals[i] != null) { total += vals[i]; hasData = true; }
     }
-    result[board] = hasData ? total : null;
+    result[meta.boards[bi]] = hasData ? total : null;
   }
   return result;
 }
 
 function render() {
-  if (!appData || !geoData) return;
+  if (!meta || !geoLayer || !currentSeries) return;
 
   const values = computeValues();
   const nums = Object.values(values).filter(v => v != null);
@@ -353,7 +352,25 @@ function render() {
   document.getElementById("leg-min").textContent = min.toLocaleString();
   document.getElementById("leg-max").textContent = max.toLocaleString();
 
-  if (geoLayer) map.removeLayer(geoLayer);
+  geoLayer.eachLayer(layer => {
+    const key = boardKey(layer.feature.properties.boro_cd);
+    layer.setStyle({
+      fillColor: colorFor(values[key] ?? null, min, max),
+      fillOpacity: 0.85,
+      weight: 0.75,
+      color: "#090e1a",
+    });
+    layer._currentValues = values;
+  });
+}
+
+function buildGeoLayer(values) {
+  const nums = Object.values(values).filter(v => v != null);
+  const min = nums.length ? Math.min(...nums) : 0;
+  const max = nums.length ? Math.max(...nums) : 1;
+
+  document.getElementById("leg-min").textContent = min.toLocaleString();
+  document.getElementById("leg-max").textContent = max.toLocaleString();
 
   geoLayer = L.geoJSON(geoData, {
     style(feature) {
@@ -367,20 +384,18 @@ function render() {
     },
     onEachFeature(feature, layer) {
       const key = boardKey(feature.properties.boro_cd);
-
       layer.on("mouseover", () => {
         layer.setStyle({ weight: 2, fillOpacity: 1, color: "#fff" });
-        const val = values[key] ?? null;
+        const val = (layer._currentValues || values)[key] ?? null;
         const metricLabel = document.getElementById("metric-select").selectedOptions[0].text;
         const rangeLabel = loIdx === hiIdx
-          ? fmtWeek(appData.weeks[loIdx])
-          : fmtWeek(appData.weeks[loIdx]) + " – " + fmtWeek(appData.weeks[hiIdx]);
+          ? fmtWeek(meta.weeks[loIdx])
+          : fmtWeek(meta.weeks[loIdx]) + " – " + fmtWeek(meta.weeks[hiIdx]);
         document.getElementById("info-board").textContent = key;
         document.getElementById("info-value").textContent = val != null ? val.toLocaleString() : "no data";
         document.getElementById("info-value").style.color = val != null ? "var(--text)" : "var(--muted)";
         document.getElementById("info-sub").textContent = val != null ? metricLabel + " · " + rangeLabel : "";
       });
-
       layer.on("mouseout", () => {
         geoLayer.resetStyle(layer);
         document.getElementById("info-board").textContent = "—";
@@ -393,19 +408,19 @@ function render() {
 }
 
 function updateSliderUI() {
-  const N = appData.weeks.length;
+  const N = meta.weeks.length;
   const lo = loIdx / (N - 1) * 100;
   const hi = hiIdx / (N - 1) * 100;
   document.getElementById("thumb-lo").style.left = lo + "%";
   document.getElementById("thumb-hi").style.left = hi + "%";
   document.getElementById("slider-fill").style.left  = lo + "%";
   document.getElementById("slider-fill").style.width = (hi - lo) + "%";
-  document.getElementById("range-start").textContent = fmtWeek(appData.weeks[loIdx]);
-  document.getElementById("range-end").textContent   = fmtWeek(appData.weeks[hiIdx]);
+  document.getElementById("range-start").textContent = fmtWeek(meta.weeks[loIdx]);
+  document.getElementById("range-end").textContent   = fmtWeek(meta.weeks[hiIdx]);
 }
 
 function initSlider() {
-  const N = appData.weeks.length;
+  const N = meta.weeks.length;
   loIdx = Math.max(0, N - 14);
   hiIdx = N - 1;
 
@@ -482,33 +497,55 @@ function initSlider() {
   updateSliderUI();
 }
 
-document.getElementById("metric-select").addEventListener("change", render);
+async function loadMetric(metric) {
+  if (seriesCache[metric]) {
+    currentSeries = seriesCache[metric];
+    return;
+  }
+  const r = await fetch(`data/series/${metric}.json`);
+  if (!r.ok) throw new Error(`data/series/${metric}.json → HTTP ${r.status}`);
+  seriesCache[metric] = await r.json();
+  currentSeries = seriesCache[metric];
+}
+
+document.getElementById("metric-select").addEventListener("change", async e => {
+  await loadMetric(e.target.value);
+  render();
+});
 
 const overlay = document.getElementById("load-overlay");
 
 Promise.all([
-  fetch("data/latest.json").then(r => {
-    if (!r.ok) throw new Error(`data/latest.json → HTTP ${r.status}`);
+  fetch("data/meta.json").then(r => {
+    if (!r.ok) throw new Error(`data/meta.json → HTTP ${r.status}`);
     return r.json();
   }),
   fetch("data/districts.geojson").then(r => {
     if (!r.ok) throw new Error(`data/districts.geojson → HTTP ${r.status}`);
     return r.json();
   }),
-]).then(([data, geo]) => {
-  appData = data;
+  fetch("data/series/total.json").then(r => {
+    if (!r.ok) throw new Error(`data/series/total.json → HTTP ${r.status}`);
+    return r.json();
+  }),
+]).then(([m, geo, series]) => {
+  meta = m;
   geoData = geo;
-  document.getElementById("legend-updated").textContent = "Updated " + data.updated;
+  seriesCache["total"] = series;
+  currentSeries = series;
+
+  document.getElementById("legend-updated").textContent = "Updated " + meta.updated;
+
+  initSlider();
+  buildGeoLayer(computeValues());
+
   overlay.style.opacity = "0";
   setTimeout(() => overlay.style.display = "none", 300);
-  initSlider();
-  render();
   map.invalidateSize();
 }).catch(err => {
-  console.error("Dashboard data load failed:", err);
+  console.error("Dashboard load failed:", err);
   overlay.style.color = "var(--orange)";
   overlay.textContent = "Failed to load: " + err.message;
-  overlay.style.pointerEvents = "auto";
 });
 </script>
 </body>

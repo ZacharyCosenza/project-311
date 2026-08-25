@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import date
 
 import pandas as pd
@@ -32,6 +33,8 @@ def export_dashboard_json(modeling_data: pd.DataFrame, inference_results: pd.Dat
             val = getattr(row, f"tgt_{g}", None)
             series[g][b][wi] = int(val) if val is not None and pd.notna(val) else None
 
+    _write_split_files(boards, weeks, series)
+
     pred_week = str(inference_results["week_start"].iloc[0])
     prediction = {"week_start": pred_week, "total": {}, "ranks": {}}
     for row in inference_results.itertuples(index=False):
@@ -46,3 +49,17 @@ def export_dashboard_json(modeling_data: pd.DataFrame, inference_results: pd.Dat
         "prediction": prediction,
     }
     return json.dumps(payload, separators=(",", ":"))
+
+
+def _write_split_files(boards: list, weeks: list, series: dict) -> None:
+    base = "dashboard/data"
+    os.makedirs(f"{base}/series", exist_ok=True)
+
+    meta = {"updated": str(date.today()), "weeks": weeks, "boards": boards}
+    with open(f"{base}/meta.json", "w") as f:
+        f.write(json.dumps(meta, separators=(",", ":")))
+
+    for metric in ["total"] + GROUPS:
+        arr = [series[metric][b] for b in boards]
+        with open(f"{base}/series/{metric}.json", "w") as f:
+            f.write(json.dumps(arr, separators=(",", ":")))
