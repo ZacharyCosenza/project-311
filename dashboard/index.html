@@ -143,6 +143,24 @@ select option { background: var(--surface); }
 #map { width: 100%; height: 100%; background: var(--bg); }
 .leaflet-container { background: var(--bg); }
 
+#load-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--bg);
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
 .card {
   position: absolute;
   background: var(--panel);
@@ -250,6 +268,7 @@ select option { background: var(--surface); }
 
 <div id="map-wrap">
   <div id="map"></div>
+  <div id="load-overlay">Loading…</div>
 
   <div class="card" id="info-card">
     <div class="card-eyebrow">District</div>
@@ -295,13 +314,15 @@ let geoLayer = null;
 let loIdx = 0;
 let hiIdx = 0;
 
+const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+const tileTheme = prefersDark ? "dark_all" : "light_all";
 const map = L.map("map", {
   center: [40.70, -73.94],
   zoom: 11,
   zoomControl: true,
   attributionControl: false,
 }).addLayer(L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  `https://{s}.basemaps.cartocdn.com/${tileTheme}/{z}/{x}/{y}{r}.png`,
   { subdomains: "abcd" }
 ));
 
@@ -463,16 +484,32 @@ function initSlider() {
 
 document.getElementById("metric-select").addEventListener("change", render);
 
+const overlay = document.getElementById("load-overlay");
+
 Promise.all([
-  fetch("data/latest.json").then(r => r.json()),
-  fetch("data/districts.geojson").then(r => r.json()),
+  fetch("data/latest.json").then(r => {
+    if (!r.ok) throw new Error(`data/latest.json → HTTP ${r.status}`);
+    return r.json();
+  }),
+  fetch("data/districts.geojson").then(r => {
+    if (!r.ok) throw new Error(`data/districts.geojson → HTTP ${r.status}`);
+    return r.json();
+  }),
 ]).then(([data, geo]) => {
   appData = data;
   geoData = geo;
   document.getElementById("legend-updated").textContent = "Updated " + data.updated;
+  overlay.style.opacity = "0";
+  setTimeout(() => overlay.style.display = "none", 300);
   initSlider();
   render();
-}).catch(err => console.error("Failed to load dashboard data:", err));
+  map.invalidateSize();
+}).catch(err => {
+  console.error("Dashboard data load failed:", err);
+  overlay.style.color = "var(--orange)";
+  overlay.textContent = "Failed to load: " + err.message;
+  overlay.style.pointerEvents = "auto";
+});
 </script>
 </body>
 </html>
