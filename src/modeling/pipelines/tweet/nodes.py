@@ -146,10 +146,17 @@ def format_daily_deep_dive(daily_district: pd.DataFrame, target_col: str) -> str
     else:
         reason_text = "typical activity patterns"
 
+    delta = round(row[delta_col])
+    if abs(delta) < 10:
+        change_text = "near its recent normal"
+    elif delta > 0:
+        change_text = f"up ~{delta:,} from its recent normal"
+    else:
+        change_text = f"down ~{abs(delta):,} from its recent normal"
+
     return (
         f"District spotlight: {row['board_key']} is projected for ~{round(row[pred_col]):,} "
-        f"311 calls the week of {row['week_start']}, up ~{round(row[delta_col]):,} from its recent "
-        f"normal, driven by {reason_text}."
+        f"311 calls the week of {row['week_start']}, {change_text}, driven by {reason_text}."
     )
 
 
