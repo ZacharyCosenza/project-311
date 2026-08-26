@@ -129,20 +129,34 @@ def plot_delta_map(
 def select_daily_district(
     inference_results: pd.DataFrame, weekday_to_rank: dict, min_delta_baseline: float,
 ) -> pd.DataFrame:
-    """Picks the district for today's spotlight tweet by delta_rank within the eligible
-    pool. Eligibility requires baseline_tgt_calls >= min_delta_baseline — near-zero
-    baselines make any prediction look like a huge absolute delta, so the floor is a
-    surfacing decision applied here, not in inference."""
+    """Picks the district for today's spotlight tweet using a composite interestingness
+    score within the eligible pool (baseline >= min_delta_baseline, positive delta).
+
+    Score = decile_pred + decile_baseline + decile_delta, each 0–9 within the pool.
+    This surfaces large districts with notable movement over small districts that happen
+    to have a high percentage delta from a near-zero base.
+    """
     delta_col = next(c for c in inference_results.columns if c.startswith("delta_tgt_"))
     rank = weekday_to_rank.get(date.today().weekday(), 1)
 
-    eligible = inference_results[inference_results["baseline_tgt_calls"] >= min_delta_baseline].copy()
-    eligible["delta_rank"] = np.nan
-    positive = eligible[delta_col] > 0
-    eligible.loc[positive, "delta_rank"] = (
-        eligible.loc[positive, delta_col].rank(ascending=False, method="first")
-    )
-    return eligible[eligible["delta_rank"] == rank]
+    pool = inference_results[
+        (inference_results["baseline_tgt_calls"] >= min_delta_baseline)
+        & (inference_results[delta_col] > 0)
+    ].copy()
+
+    if pool.empty:
+        return pool
+
+    n = len(pool)
+    bins = min(10, n)
+    pool["_decile_pred"]     = pd.qcut(pool["pred_tgt_calls"],          bins, labels=False, duplicates="drop")
+    pool["_decile_baseline"] = pd.qcut(pool["baseline_tgt_calls"],      bins, labels=False, duplicates="drop")
+    pool["_decile_delta"]    = pd.qcut(pool[delta_col],                 bins, labels=False, duplicates="drop")
+    pool["_score"]           = pool["_decile_pred"] + pool["_decile_baseline"] + pool["_decile_delta"]
+    pool["delta_rank"]       = pool["_score"].rank(ascending=False, method="first").astype(int)
+    pool = pool.drop(columns=["_decile_pred", "_decile_baseline", "_decile_delta", "_score"])
+
+    return pool[pool["delta_rank"] == rank]
 
 
 def format_daily_deep_dive(daily_district: pd.DataFrame, target_col: str) -> str:
