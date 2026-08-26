@@ -89,7 +89,7 @@ def create_daily_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
             func=select_daily_district,
-            inputs=["inference_results", "params:weekday_to_rank", "params:min_delta_baseline"],
+            inputs=["inference_results", "params:weekday_to_rank"],
             outputs="daily_district",
             name="select_daily_district",
         ),
