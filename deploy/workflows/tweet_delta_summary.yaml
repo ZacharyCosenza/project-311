@@ -7,6 +7,7 @@ spec:
   schedules:
     - "17 8 * * 1"          # Mondays only, 8:17 AM America/New_York — after tweet-summary
   timezone: "America/New_York"
+  suspend: true             # tweeting paused — flip to false to resume posting
   concurrencyPolicy: Forbid # skip if a run is already in progress
   workflowSpec:
     serviceAccountName: argo
