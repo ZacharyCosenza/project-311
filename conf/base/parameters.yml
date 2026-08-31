@@ -44,6 +44,11 @@ year_offset_weeks: 52  # for the "_ly" (last-year) lags — separates recent tre
 
 raw_dir: "data/dev/00_raw"
 report_dir: "data/dev/02_reporting"
+# Tracking is a prod-only concern: the experiment rows carry an absolute
+# artifact_location resolved against whatever cwd created them, so a dev run and a
+# containerised prod run sharing one db fight over paths that only exist in one of them.
+# conf/prod turns this on; dev runs skip logging entirely.
+mlflow_enabled: false
 mlflow_tracking_uri: "sqlite:///data/dev/02_reporting/mlflow.db"
 mlflow_experiment: "311-modeling"
 mlflow_model_name: "311-modeling"
@@ -164,12 +169,7 @@ reason_map:
   ft_lag_4: "recent historical patterns"
   ft_lag_5: "recent historical patterns"
   ft_lag_6: "recent historical patterns"
-  ft_lag_1_ly: "patterns from this time last year"
-  ft_lag_2_ly: "patterns from this time last year"
-  ft_lag_3_ly: "patterns from this time last year"
-  ft_lag_4_ly: "patterns from this time last year"
-  ft_lag_5_ly: "patterns from this time last year"
-  ft_lag_6_ly: "patterns from this time last year"
+  ft_lag_ly: "patterns from this time last year"
   ft_week_of_year: "seasonal timing"
   ft_event_count: "scheduled local events"
   ft_lag1_temp_max: "weather conditions"

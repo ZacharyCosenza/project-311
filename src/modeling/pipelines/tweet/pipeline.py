@@ -34,7 +34,7 @@ def create_summary_pipeline(**kwargs) -> Pipeline:
         node(
             func=log_tweet_to_mlflow,
             inputs=[
-                "tweet_summary_text", "district_map_path",
+                "tweet_summary_text", "district_map_path", "params:mlflow_enabled",
                 "params:mlflow_tracking_uri", "params:mlflow_tweet_experiment", "params:report_dir",
             ],
             outputs=None,
@@ -70,7 +70,7 @@ def create_delta_summary_pipeline(**kwargs) -> Pipeline:
         node(
             func=log_tweet_to_mlflow,
             inputs=[
-                "tweet_delta_summary_text", "delta_map_path",
+                "tweet_delta_summary_text", "delta_map_path", "params:mlflow_enabled",
                 "params:mlflow_tracking_uri", "params:mlflow_tweet_delta_experiment", "params:report_dir",
             ],
             outputs=None,
@@ -108,7 +108,7 @@ def create_daily_pipeline(**kwargs) -> Pipeline:
         node(
             func=log_tweet_to_mlflow,
             inputs=[
-                "tweet_daily_text", "daily_trend_path",
+                "tweet_daily_text", "daily_trend_path", "params:mlflow_enabled",
                 "params:mlflow_tracking_uri", "params:mlflow_tweet_daily_experiment", "params:report_dir",
             ],
             outputs=None,

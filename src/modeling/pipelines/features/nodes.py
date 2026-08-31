@@ -4,46 +4,30 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
 
-def _add_lag_columns(sdf, w: Window, target_col: str, max_lag_weeks: int, year_offset_weeks: int, suffix: str = ""):
-    """Shared by featurize_lags and featurize_grouped_lags — suffix namespaces the
-    output columns (e.g. "_noise") so the same logic can run once per target column
-    without collisions; empty by default, matching featurize_lags's own column names
-    exactly.
+def _add_lag_columns(sdf, w: Window, target_col: str, max_lag_weeks: int, year_offset_weeks: int, suffix: str):
+    """suffix namespaces the output columns (e.g. "_noise") so the same logic can run
+    once per target column without collisions.
     """
     recent_cols = [f"ft_lag_{lag}{suffix}" for lag in range(1, max_lag_weeks + 1)]
     for lag, col in zip(range(1, max_lag_weeks + 1), recent_cols):
         sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, lag).over(w)))
 
-    ly_cols = [f"ft_lag_{lag}_ly{suffix}" for lag in range(1, max_lag_weeks + 1)]
-    for lag, col in zip(range(1, max_lag_weeks + 1), ly_cols):
-        sdf = sdf.withColumn(col, F.log1p(F.lag(target_col, year_offset_weeks + lag).over(w)))
+    # A single column at exactly year_offset_weeks back — the same calendar week last
+    # year. The previous fan of six columns sat at year_offset_weeks+1..+6, so it
+    # straddled the anniversary without ever landing on it.
+    ly_col = f"ft_lag_ly{suffix}"
+    sdf = sdf.withColumn(ly_col, F.log1p(F.lag(target_col, year_offset_weeks).over(w)))
 
-    return sdf, recent_cols + ly_cols
-
-
-def featurize_lags(target: pd.DataFrame, target_col: str, max_lag_weeks: int, year_offset_weeks: int) -> pd.DataFrame:
-    """Recent lags (1..max_lag_weeks back) plus the same lags shifted back
-    year_offset_weeks (~1 calendar year) — "_ly" columns — so the model can separate a
-    recent trend from what this same time of year looked like last year, rather than
-    conflating the two. Week-of-year on top captures seasonality more broadly.
-    """
-    spark = SparkSession.builder.appName("featurize-lags").master("local[*]").getOrCreate()
-    try:
-        w = Window.partitionBy("board_key").orderBy("week_start")
-        sdf = spark.createDataFrame(target).withColumn("ft_week_of_year", F.weekofyear("week_start"))
-        sdf, lag_cols = _add_lag_columns(sdf, w, target_col, max_lag_weeks, year_offset_weeks)
-        sdf = sdf.select("board_key", "week_start", "ft_week_of_year", *lag_cols)
-        return sdf.toPandas()
-    finally:
-        spark.stop()
+    return sdf, [*recent_cols, ly_col]
 
 
 def featurize_grouped_lags(
     target: pd.DataFrame, complaint_type_groups: dict, max_lag_weeks: int, year_offset_weeks: int,
 ) -> pd.DataFrame:
-    """Same lag logic as featurize_lags, run once per group (each complaint_type_groups
-    key, plus "other") in a single shared Spark session — calling featurize_lags itself
-    in a loop would restart the JVM once per group.
+    """Recent lags (1..max_lag_weeks back) plus one "_ly" column holding the same
+    calendar week a year ago, built once per group (each complaint_type_groups key, plus
+    "other") in a single shared Spark session — a session per group would restart the
+    JVM eleven times. Week-of-year on top captures seasonality more broadly.
     """
     spark = SparkSession.builder.appName("featurize-grouped-lags").master("local[*]").getOrCreate()
     try:
@@ -70,7 +54,7 @@ def group_feature_cols(group: str, shared_feature_cols: list, max_lag_weeks: int
     definition, not two that could drift apart.
     """
     lag_cols = [f"ft_lag_{lag}_{group}" for lag in range(1, max_lag_weeks + 1)]
-    lag_cols += [f"ft_lag_{lag}_ly_{group}" for lag in range(1, max_lag_weeks + 1)]
+    lag_cols.append(f"ft_lag_ly_{group}")
     return [*lag_cols, *shared_feature_cols]
 
 
@@ -88,39 +72,15 @@ def featurize_weather(weather_lag1: pd.DataFrame, weather_pred: pd.DataFrame) ->
     return lag.merge(pred, on="week_start", how="outer")
 
 
-def join_features(
-    target: pd.DataFrame,
-    lag_features: pd.DataFrame,
-    event_features: pd.DataFrame,
-    weather_features: pd.DataFrame,
-    feature_cols: list,
-    categorical_features: list,
-) -> pd.DataFrame:
-    """Join all feature groups onto the target spine and finalize types."""
-    numeric_features = [f for f in feature_cols if f not in categorical_features]
-
-    df = (
-        target
-        .merge(lag_features, on=["board_key", "week_start"], how="left")
-        .merge(event_features, on=["board_key", "week_start"], how="left")
-        .merge(weather_features, on="week_start", how="left")
-    )
-    df["ft_event_count"] = df["ft_event_count"].fillna(0)
-    df = df.sort_values(["board_key", "week_start"]).reset_index(drop=True)
-    df[numeric_features] = df[numeric_features].astype(float)
-    df["ft_board_key"] = df["board_key"].astype("category")
-    return df
-
-
 def join_grouped_features(
     target: pd.DataFrame, lag_features: pd.DataFrame,
     event_features: pd.DataFrame, weather_features: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Same join as join_features, but the column set is group-driven (one set of lag
-    columns per complaint_type_groups key) rather than a fixed feature_cols list, so
-    numeric/categorical casting goes by naming convention instead: every ft_ column is
-    numeric except ft_board_key, the one categorical. Shared by the train and
-    inference pipelines.
+    """Join every feature group onto the target spine. The column set is group-driven
+    (one set of lag columns per complaint_type_groups key) rather than a fixed list, so
+    numeric/categorical casting goes by naming convention: every ft_ column is numeric
+    except ft_board_key, the one categorical. Shared by the train and inference
+    pipelines.
     """
     df = (
         target

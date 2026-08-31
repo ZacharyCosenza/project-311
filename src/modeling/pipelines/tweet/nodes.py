@@ -188,8 +188,14 @@ def plot_daily_trend(
 
 
 def log_tweet_to_mlflow(
-    tweet_text: str, image_path: str, mlflow_tracking_uri: str, mlflow_experiment: str, report_dir: str,
+    tweet_text: str, image_path: str, mlflow_enabled: bool,
+    mlflow_tracking_uri: str, mlflow_experiment: str, report_dir: str,
 ) -> None:
+    """A no-op unless mlflow_enabled — see the parameter's note in conf/base."""
+    if not mlflow_enabled:
+        print("[log_tweet_to_mlflow] mlflow_enabled is false, skipping tracking", file=sys.stderr)
+        return
+
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     if mlflow.get_experiment_by_name(mlflow_experiment) is None:
         mlflow.create_experiment(mlflow_experiment, artifact_location=str(Path(report_dir) / "mlruns"))

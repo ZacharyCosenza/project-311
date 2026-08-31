@@ -2,13 +2,13 @@ from kedro.pipeline import Pipeline, node, pipeline
 
 from modeling.pipelines.features.nodes import featurize_events, featurize_grouped_lags, featurize_weather, join_grouped_features
 from modeling.pipelines.raw.nodes import fetch_calls_weekly, fetch_calls_weekly_by_group, fetch_events_weekly, fetch_weather_weekly
+from modeling.pipelines.modeling.nodes import log_grouped_run
 from modeling.pipelines.target.nodes import build_grouped_target
 
 from .nodes import (
     compute_grouped_metrics,
     compute_train_end_date,
     drop_incomplete_grouped_rows,
-    log_groups_to_mlflow,
     plot_grouped_histograms,
     plot_grouped_shap_beeswarm,
     plot_grouped_timeseries,
@@ -128,12 +128,12 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="plot_metrics_comparison",
         ),
         node(
-            func=log_groups_to_mlflow,
+            func=log_grouped_run,
             inputs=[
-                "models", "modeling_data", "metrics", "params:complaint_type_groups",
-                "params:shared_feature_cols", "params:shared_categorical_features", "params:max_lag_weeks",
-                "params:split_col", "params:mlflow_tracking_uri", "params:mlflow_experiment",
-                "params:mlflow_model_name", "params:model_params", "params:report_dir",
+                "models", "modeling_data", "metrics", "params:shared_categorical_features",
+                "params:split_col", "params:mlflow_enabled", "params:mlflow_tracking_uri",
+                "params:mlflow_experiment", "params:mlflow_model_name",
+                "params:model_params", "params:report_dir",
             ],
             outputs=None,
             name="log_to_mlflow",

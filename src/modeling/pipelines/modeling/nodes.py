@@ -1,41 +1,23 @@
 import pickle
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.pyfunc
 import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import shap
 from sklearn.inspection import partial_dependence
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
+from modeling.pipelines.modeling.model import GroupedCallModelWrapper
+
 matplotlib.use("Agg")
-
-
-def _pre_processing(df: pd.DataFrame) -> pd.DataFrame:
-    return df.copy()
-
-
-def _split(
-    df: pd.DataFrame, test_size: float, val_size: float, random_state: int,
-    stratify_col: str, split_col: str,
-) -> pd.DataFrame:
-    df = df.copy()
-    train_val, test = train_test_split(
-        df, test_size=test_size, random_state=random_state, stratify=df[stratify_col],
-    )
-    train, val = train_test_split(
-        train_val, test_size=val_size, random_state=random_state, stratify=train_val[stratify_col],
-    )
-    df[split_col] = "train"
-    df.loc[val.index, split_col] = "val"
-    df.loc[test.index, split_col] = "test"
-    return df
 
 
 def _input_drift_metrics(X: pd.DataFrame, numeric_features: list) -> dict:
@@ -56,28 +38,6 @@ def _shap_drift_metrics(model: XGBRegressor, X: pd.DataFrame, feature_cols: list
         **{f"shap_mean_{col}": float(shap_vals[col].abs().mean()) for col in feature_cols},
         **{f"shap_std_{col}": float(shap_vals[col].abs().std()) for col in feature_cols},
     }
-
-
-def training(
-    features: pd.DataFrame,
-    feature_cols: list,
-    categorical_features: list,
-    target_col: str,
-    stratify_col: str,
-    split_col: str,
-    model_params: dict,
-    test_size: float,
-    val_size: float,
-    random_state: int,
-) -> tuple[XGBRegressor, pd.DataFrame]:
-    df = _pre_processing(features)
-    df = _split(df, test_size, val_size, random_state, stratify_col, split_col)
-
-    train_df = df[df[split_col] == "train"]
-    X, y = train_df[feature_cols], train_df[target_col]
-    model = XGBRegressor(**model_params)
-    model.fit(X, np.log1p(y))
-    return model, df
 
 
 def inference(
@@ -145,48 +105,87 @@ def compute_metrics(
     return pd.DataFrame(rows)
 
 
-def log_to_mlflow(
-    model: XGBRegressor,
+def log_grouped_run(
+    models,
     modeling_data: pd.DataFrame,
     metrics: pd.DataFrame,
-    feature_cols: list,
     categorical_features: list,
     split_col: str,
+    mlflow_enabled: bool,
     mlflow_tracking_uri: str,
     mlflow_experiment: str,
     mlflow_model_name: str,
     model_params: dict,
     report_dir: str,
-    extra_tags: dict | None = None,
 ) -> None:
-    numeric_features = [f for f in feature_cols if f not in categorical_features]
-    X_train = modeling_data[modeling_data[split_col] == "train"][feature_cols]
+    """A GroupedCallModel as one MLflow run, with a nested child run per head.
 
-    all_metrics = {
-        **{f"{r.split}_{r.metric}": r.value for r in metrics.itertuples()},
-        **_input_drift_metrics(X_train, numeric_features),
-        **_shap_drift_metrics(model, X_train, feature_cols),
-    }
+    The parent carries the ensemble: one pyfunc model, one registered version, and the
+    headline metrics a reviewer wants first. Each child carries the per-group detail —
+    metrics, input drift, SHAP drift — that would otherwise collapse into a single run
+    holding several hundred flat metric keys.
+
+    A no-op unless mlflow_enabled — see the parameter's note in conf/base.
+    """
+    if not mlflow_enabled:
+        print("[log_grouped_run] mlflow_enabled is false, skipping tracking", file=sys.stderr)
+        return
 
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     if mlflow.get_experiment_by_name(mlflow_experiment) is None:
         mlflow.create_experiment(mlflow_experiment, artifact_location=str(Path(report_dir) / "mlruns"))
     mlflow.set_experiment(mlflow_experiment)
-    with mlflow.start_run():
-        mlflow.log_metrics(all_metrics)
-        mlflow.log_params(model_params)
-        if extra_tags:
-            mlflow.set_tags(extra_tags)
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        artifact_dir = Path(report_dir) / "mlartifacts"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path = artifact_dir / f"model_{timestamp}.pkl"
-        with open(artifact_path, "wb") as f:
-            pickle.dump(model, f)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    artifact_dir = Path(report_dir) / "mlartifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / f"model_{timestamp}.pkl"
+    with open(artifact_path, "wb") as f:
+        pickle.dump(models, f)
+
+    with mlflow.start_run():
+        mlflow.log_params(model_params)
+        mlflow.log_param("groups", ",".join(models.groups))
         mlflow.log_param("model_artifact_path", str(artifact_path))
         mlflow.set_tag("trained_at_utc", timestamp)
-        mlflow.xgboost.log_model(model, name="model", registered_model_name=mlflow_model_name)
+
+        # Test MAE summed across heads is the only figure comparable to what inference
+        # actually emits, since rank_districts sums the heads to get pred_tgt_calls.
+        test = metrics[(metrics["split"] == "test") & (metrics["metric"].isin(["mae", "baseline_mae"]))]
+        totals = test.groupby("metric")["value"].sum()
+        mlflow.log_metrics({
+            "test_mae_all_groups": float(totals.get("mae", float("nan"))),
+            "test_baseline_mae_all_groups": float(totals.get("baseline_mae", float("nan"))),
+            "n_groups": float(len(models)),
+        })
+
+        # No signature: ft_board_key is a pandas Categorical (XGBoost is fitted with
+        # enable_categorical), and infer_signature silently drops categorical columns,
+        # producing a schema that then rejects the very example it was inferred from.
+        # Reproducing it faithfully would mean the wrapper rebuilding the exact category
+        # set at load time — real fragility for no gain here, since this model is loaded
+        # through the Kedro catalog rather than MLflow's scoring server.
+        mlflow.pyfunc.log_model(
+            name="model",
+            python_model=GroupedCallModelWrapper(),
+            artifacts={"model": str(artifact_path)},
+            code_paths=[str(Path(__file__).resolve().parents[3] / "modeling")],
+            registered_model_name=mlflow_model_name,
+        )
+
+        for group, model in models.items():
+            feature_cols = models.feature_cols(group)
+            numeric_features = [f for f in feature_cols if f not in categorical_features]
+            X_train = modeling_data[modeling_data[split_col] == "train"][feature_cols]
+            group_metrics = metrics[metrics["group"] == group]
+
+            with mlflow.start_run(nested=True, run_name=group):
+                mlflow.set_tag("target_group", group)
+                mlflow.log_metrics({
+                    **{f"{r.split}_{r.metric}": r.value for r in group_metrics.itertuples()},
+                    **_input_drift_metrics(X_train, numeric_features),
+                    **_shap_drift_metrics(model, X_train, feature_cols),
+                })
 
 
 def plot_feature_histograms(

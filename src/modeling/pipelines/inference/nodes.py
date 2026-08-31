@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 import shap
 
-from modeling.pipelines.features.nodes import group_feature_cols
-from modeling.pipelines.modeling.nodes import inference
+from modeling.pipelines.modeling.model import GroupedCallModel
 
 
 def compute_predict_window(lookback_weeks: int) -> tuple[str, str, str]:
@@ -61,8 +60,7 @@ def build_next_week_features(
 
         for lag in range(1, max_lag_weeks + 1):
             next_week[f"ft_lag_{lag}_{group}"] = lag_lookup(lag)
-        for lag in range(1, max_lag_weeks + 1):
-            next_week[f"ft_lag_{lag}_ly_{group}"] = lag_lookup(year_offset_weeks + lag)
+        next_week[f"ft_lag_ly_{group}"] = lag_lookup(year_offset_weeks)
 
     # Category set must match what the models were trained on, not just whatever boards
     # happen to appear in this narrow window — a board with no recent calls would
@@ -134,28 +132,24 @@ def compute_call_deltas(
 
 
 def rank_districts(
-    models: dict, next_week_features: pd.DataFrame, complaint_type_groups: dict,
+    models: GroupedCallModel, next_week_features: pd.DataFrame, complaint_type_groups: dict,
     shared_feature_cols: list, max_lag_weeks: int, target_col: str,
 ) -> pd.DataFrame:
-    """Predictions + rank for every district (not just a top-k slice) — one prediction
-    per group, summed into pred_{target_col} so everything downstream (tweet copy, the
-    district map) sees the same single total-calls number it always did, regardless of
-    how many models are actually behind it.
+    """Predictions + rank for every district (not just a top-k slice). The per-group
+    sum into pred_{target_col} lives on the model itself, so everything downstream
+    (tweet copy, the district map) sees the same single total-calls number it always
+    did, regardless of how many heads are actually behind it.
     """
     pred_col = f"pred_{target_col}"
     scored = next_week_features.copy()
-    scored[pred_col] = 0.0
-    for group, model in models.items():
-        feature_cols = group_feature_cols(group, shared_feature_cols, max_lag_weeks)
-        group_scored = inference(model, scored, feature_cols, f"tgt_{group}")
-        scored[pred_col] += group_scored[f"pred_tgt_{group}"]
+    scored[pred_col] = models.predict(scored)
     scored = scored.sort_values(pred_col, ascending=False).reset_index(drop=True)
     scored.insert(0, "rank", range(1, len(scored) + 1))
     return scored
 
 
 def add_shap_reasons(
-    models: dict, ranked_districts: pd.DataFrame, complaint_type_groups: dict,
+    models: GroupedCallModel, ranked_districts: pd.DataFrame, complaint_type_groups: dict,
     shared_feature_cols: list, max_lag_weeks: int, top_reasons: int, reason_map: dict,
 ) -> pd.DataFrame:
     """Top-N *distinct* reasons per district, by pooled SHAP contribution strength
@@ -166,7 +160,7 @@ def add_shap_reasons(
     """
     contributions = []
     for group, model in models.items():
-        feature_cols = group_feature_cols(group, shared_feature_cols, max_lag_weeks)
+        feature_cols = models.feature_cols(group)
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(ranked_districts[feature_cols], check_additivity=False)
         shap_df = pd.DataFrame(shap_values, columns=feature_cols, index=ranked_districts.index)

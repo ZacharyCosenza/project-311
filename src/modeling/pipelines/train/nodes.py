@@ -8,7 +8,8 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
 from modeling.pipelines.features.nodes import drop_incomplete_rows, group_feature_cols
-from modeling.pipelines.modeling.nodes import compute_metrics, log_to_mlflow, plot_feature_histograms, plot_feature_timeseries, plot_shap_beeswarm
+from modeling.pipelines.modeling.model import GroupedCallModel
+from modeling.pipelines.modeling.nodes import compute_metrics, log_grouped_run, plot_feature_histograms, plot_feature_timeseries, plot_shap_beeswarm
 
 
 def compute_train_end_date() -> str:
@@ -41,11 +42,13 @@ def train_models(
     test_size: float,
     val_size: float,
     random_state: int,
-) -> tuple[dict, pd.DataFrame]:
+) -> tuple[GroupedCallModel, pd.DataFrame]:
     """One XGBRegressor per group (each complaint_type_groups key, plus "other"), all
     trained on the same train/val/test split so groups stay comparable — the split
-    happens once here rather than reusing modeling.training per group, which would
-    otherwise re-split independently for every group and leave each on different rows.
+    happens once here rather than per group, which would otherwise re-split
+    independently for every group and leave each on different rows.
+    The heads are returned wrapped in a GroupedCallModel so they version and load as
+    the single unit inference actually uses.
     """
     df = features.copy()
     train_val, test = train_test_split(df, test_size=test_size, random_state=random_state, stratify=df[stratify_col])
@@ -66,11 +69,11 @@ def train_models(
         model.fit(X, np.log1p(y))
         models[group] = model
 
-    return models, df
+    return GroupedCallModel(models, shared_feature_cols, max_lag_weeks), df
 
 
 def compute_grouped_metrics(
-    models: dict, modeling_data: pd.DataFrame, complaint_type_groups: dict,
+    models: GroupedCallModel, modeling_data: pd.DataFrame, complaint_type_groups: dict,
     shared_feature_cols: list, max_lag_weeks: int, split_col: str, ranking_k: int,
 ) -> pd.DataFrame:
     """Reuses modeling.compute_metrics per group — same metric set (MAE/RMSE/ranking
@@ -79,38 +82,11 @@ def compute_grouped_metrics(
     """
     frames = []
     for group, model in models.items():
-        feature_cols = group_feature_cols(group, shared_feature_cols, max_lag_weeks)
+        feature_cols = models.feature_cols(group)
         m = compute_metrics(model, modeling_data, feature_cols, f"tgt_{group}", split_col, ranking_k)
         m.insert(0, "group", group)
         frames.append(m)
     return pd.concat(frames, ignore_index=True)
-
-
-def log_groups_to_mlflow(
-    models: dict,
-    modeling_data: pd.DataFrame,
-    metrics: pd.DataFrame,
-    complaint_type_groups: dict,
-    shared_feature_cols: list,
-    shared_categorical_features: list,
-    max_lag_weeks: int,
-    split_col: str,
-    mlflow_tracking_uri: str,
-    mlflow_experiment: str,
-    mlflow_model_name: str,
-    model_params: dict,
-    report_dir: str,
-) -> None:
-    """One MLflow run per group, in a shared experiment, tagged with its group name —
-    reuses modeling.log_to_mlflow unchanged aside from that tag."""
-    for group, model in models.items():
-        feature_cols = group_feature_cols(group, shared_feature_cols, max_lag_weeks)
-        group_metrics = metrics[metrics["group"] == group].drop(columns="group")
-        log_to_mlflow(
-            model, modeling_data, group_metrics, feature_cols, shared_categorical_features, split_col,
-            mlflow_tracking_uri, mlflow_experiment, f"{mlflow_model_name}-{group}",
-            model_params, f"{report_dir}/{group}", extra_tags={"target_group": group},
-        )
 
 
 def plot_metrics_comparison(metrics: pd.DataFrame, report_dir: str) -> None:
@@ -139,12 +115,12 @@ def plot_metrics_comparison(metrics: pd.DataFrame, report_dir: str) -> None:
 
 
 def plot_grouped_histograms(
-    models: dict, modeling_data: pd.DataFrame, complaint_type_groups: dict,
+    models: GroupedCallModel, modeling_data: pd.DataFrame, complaint_type_groups: dict,
     shared_feature_cols: list, shared_categorical_features: list, max_lag_weeks: int,
     split_col: str, report_dir: str,
 ) -> None:
     for group, model in models.items():
-        feature_cols = group_feature_cols(group, shared_feature_cols, max_lag_weeks)
+        feature_cols = models.feature_cols(group)
         plot_feature_histograms(
             model, modeling_data, feature_cols, shared_categorical_features, split_col, f"{report_dir}/{group}",
         )
@@ -162,9 +138,9 @@ def plot_grouped_timeseries(
 
 
 def plot_grouped_shap_beeswarm(
-    models: dict, modeling_data: pd.DataFrame, complaint_type_groups: dict,
+    models: GroupedCallModel, modeling_data: pd.DataFrame, complaint_type_groups: dict,
     shared_feature_cols: list, max_lag_weeks: int, split_col: str, report_dir: str,
 ) -> None:
     for group, model in models.items():
-        feature_cols = group_feature_cols(group, shared_feature_cols, max_lag_weeks)
+        feature_cols = models.feature_cols(group)
         plot_shap_beeswarm(model, modeling_data, feature_cols, split_col, f"{report_dir}/{group}")
